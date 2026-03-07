@@ -20,6 +20,7 @@
 -   **Interactive API Documentation**: Full **Scalar** integration for a modern, high-performance API testing interface.
 -   **Dockerized Deployment**: Includes a multi-stage Dockerfile and a robust `compose.yaml` for instant environment setup.
 -   **Global Exception Handling**: Centralized error management for meaningful HTTP status codes and responses.
+-   **Observability & Monitoring**: Fully integrated with **Spring Boot Actuator** and **Micrometer Prometheus** for real-time system health and performance tracking.
 
 ---
 
@@ -31,6 +32,7 @@ As a Senior Architect, I've implemented several best practices into this project
 2.  **Spring Boot 4.x & Java 21**: We utilize the latest stable features, focusing on performance optimizations and modern coding standards (Lombok, Jakarta EE).
 3.  **Asynchronous Messaging**: RabbitMQ decoupling ensures that the reservation experience remains fast for the user while slower processes (like sending confirmation emails) happen in the background.
 4.  **Database Strategy**: PostgreSQL 16 is used for ACID-compliant persistence, with optimized indexing for ticket availability checks.
+5.  **Observability (Actuator & Prometheus)**: Architecture includes built-in readiness/liveness probes and custom metrics to ensure the system is monitorable in production environments.
 
 ---
 
@@ -45,6 +47,7 @@ As a Senior Architect, I've implemented several best practices into this project
 | **Messaging Queue**  | RabbitMQ                       |
 | **API Documentation**| Scalar & SpringDoc             |
 | **Containerization** | Docker & Docker Compose        |
+| **Monitoring**      | Actuator & Prometheus          |
 | **Build Tool**       | Maven                          |
 
 ---
@@ -68,10 +71,11 @@ The easiest way to get OmniTicket up and running is using Docker:
     ```
 
 2.  **Environment Setup**:
-    The service reads from a `.env` file. A default one is provided:
+    The service reads from a `.env` file. A default one is provided.
     ```bash
     cp .env.example .env
     ```
+    *Note: The application is configured to automatically import `.env` as a property source even during local development.*
 
 3.  **Launch the stack**:
     ```bash
@@ -101,11 +105,19 @@ Once the application is running, access the premium Scalar API documentation at:
 All critical configurations are managed via environment variables in the `.env` file:
 
 ```properties
+# Database host (postgres for Docker, localhost for local)
+DB_HOST=postgres
 POSTGRES_DB=omniticket
 POSTGRES_USER=myuser
 POSTGRES_PASSWORD=secret
+
+# RabbitMQ
 RABBITMQ_USER=admin
 RABBITMQ_PASSWORD=password
+
+# Mail (Mailtrap etc.)
+MAIL_USER=your_user
+MAIL_PASS=your_pass
 ```
 
 ---
