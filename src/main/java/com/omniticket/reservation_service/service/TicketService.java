@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j; // Loglama için eklendi
 
 import com.omniticket.reservation_service.model.Ticket;
+import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
 import com.omniticket.reservation_service.config.RabbitMQConfig;
@@ -122,11 +123,13 @@ public class TicketService {
         log.info("Bilet başarıyla satıldı: {}", id);
         Ticket soldTicket = ticketRepository.save(ticket);
 
-        String message = "Bilet Satıldı: ID=" + id + ", Koltuk=" + ticket.getSeatNumber();
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_NAME,
-                RabbitMQConfig.ROUTING_KEY,
-                message);
+        TicketPurchaseMessage message = new TicketPurchaseMessage(
+                soldTicket.getId(),
+                soldTicket.getSeatNumber(),
+                "selman@example.com",
+                soldTicket.getPrice());
+
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, message);
         log.info("RabbitMQ'ya mesaj fırlatıldı: {}", message);
 
         return soldTicket;

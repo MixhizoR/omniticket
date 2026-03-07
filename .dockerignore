@@ -1,0 +1,87 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+build_output.txt
+.env
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+
+# 1. Build Çıktıları (En Önemlisi)
+# Yerel makinede oluşturulan derleme dosyalarının kopyalanması 
+# imaj boyutunu büyütür ve build aşamasını yavaşlatır.
+target/
+*.jar
+*.war
+
+# 2. IDE ve Editör Dosyaları
+# Geliştirme ortamına özgü dosyalar konteyner içinde gereksizdir.
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+bin/
+
+# 3. Versiyon Kontrol Sistemi (Git)
+# Git geçmişi ve ayarları Docker imajına dahil edilmemelidir.
+.git/
+.gitignore
+.gitattributes
+
+# 4. Maven Wrapper ve Log Dosyaları
+# Dockerfile içerisinde 'maven:3.9.6' imajını kullandığın için 
+# maven wrapper (mvnw) dosyalarına ihtiyacın yok (mvn sistemde zaten var).
+.mvn/
+mvnw
+mvnw.cmd
+build_output.txt
+
+# 5. Docker Dosyaları
+# Dockerfile ve compose dosyalarının kendisini konteyner içine kopyalamaya gerek yoktur.
+Dockerfile
+compose.yaml
+docker-compose.yml
+.dockerignore
+
+# 6. Hassas Veriler ve Ortam Değişkenleri
+# .env dosyası gibi hassas bilgiler imajın içine gömülmemelidir. 
+# Bunlar docker-compose veya runtime sırasında verilmelidir.
+.env
+.env.*
+
+# 7. Dokümantasyon ve Diğer
+*.md
+LICENSE
+HELP.md

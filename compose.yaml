@@ -1,31 +1,73 @@
 services:
   postgres:
-    image: 'postgres:16-alpine' # 'latest' yerine versiyon belirtmek Best Practice'dir
+    image: 'postgres:16-alpine'
     container_name: omniticket_db
+    restart: always
     environment:
-      - 'POSTGRES_DB=${POSTGRES_DB}'
-      - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
-      - 'POSTGRES_USER=${POSTGRES_USER}'
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
     ports:
-      - '5432:5432' # Bilgisayarındaki 5432'yi konteynerdaki 5432'ye bağladık
+      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: 'redis:7.4-alpine'
     container_name: omniticket_redis
+    restart: always
     ports:
-      - '6379:6379' # Redis portunu dışarı açtık
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   rabbitmq:
     image: 'rabbitmq:4.1.8-management-alpine'
     container_name: omniticket_rabbitmq
+    restart: always
     ports:
       - '5672:5672'
       - '15672:15672'
     environment:
-      - 'RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}'
-      - 'RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}'
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "check_running" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  reservation-service:
+    build: .
+    container_name: reservation_service_app
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_RABBITMQ_HOST=rabbitmq
 
 volumes:
-  pgdata: # Verilerin silinmemesi için disk alanı ayırdık
+  pgdata:
+  redisdata:
