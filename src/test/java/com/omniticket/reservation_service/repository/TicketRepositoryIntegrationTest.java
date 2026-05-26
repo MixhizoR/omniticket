@@ -1,0 +1,105 @@
+package com.omniticket.reservation_service.repository;
+
+import com.omniticket.reservation_service.BaseIntegrationTest;
+import com.omniticket.reservation_service.model.Ticket;
+import com.omniticket.reservation_service.model.TicketStatus;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class TicketRepositoryIntegrationTest extends BaseIntegrationTest {
+
+    @Autowired
+    private TicketRepository ticketRepository;
+
+    private Ticket createTicket(String seatNumber, Double price, TicketStatus status) {
+        Ticket ticket = new Ticket();
+        ticket.setSeatNumber(seatNumber);
+        ticket.setPrice(price);
+        ticket.setStatus(status);
+        if (status == TicketStatus.RESERVED) {
+            ticket.setReservedAt(LocalDateTime.now());
+        }
+        return ticket;
+    }
+
+    @BeforeEach
+    void setUp() {
+        ticketRepository.deleteAll();
+    }
+
+    @Test
+    void givenTicket_whenSave_thenPersistsAndReturnsTicket() {
+        Ticket ticket = createTicket("A1", 100.0, TicketStatus.AVAILABLE);
+
+        Ticket savedTicket = ticketRepository.save(ticket);
+
+        assertNotNull(savedTicket.getId());
+        assertEquals("A1", savedTicket.getSeatNumber());
+        assertEquals(100.0, savedTicket.getPrice());
+        assertEquals(TicketStatus.AVAILABLE, savedTicket.getStatus());
+    }
+
+    @Test
+    void givenPersistedTicket_whenFindById_thenReturnsTicket() {
+        Ticket ticket = createTicket("A1", 100.0, TicketStatus.AVAILABLE);
+        Ticket savedTicket = ticketRepository.save(ticket);
+
+        Optional<Ticket> foundTicket = ticketRepository.findById(savedTicket.getId());
+
+        assertTrue(foundTicket.isPresent());
+        assertEquals(savedTicket.getId(), foundTicket.get().getId());
+        assertEquals("A1", foundTicket.get().getSeatNumber());
+    }
+
+    @Test
+    void givenMultipleTickets_whenFindAllByOrder_thenReturnsOrderedAsc() {
+        Ticket ticket1 = ticketRepository.save(createTicket("B2", 150.0, TicketStatus.AVAILABLE));
+        Ticket ticket2 = ticketRepository.save(createTicket("A1", 100.0, TicketStatus.AVAILABLE));
+        Ticket ticket3 = ticketRepository.save(createTicket("C3", 200.0, TicketStatus.AVAILABLE));
+
+        List<Ticket> tickets = ticketRepository.findAllByOrderByIdAsc();
+
+        assertEquals(3, tickets.size());
+        assertEquals(ticket1.getId(), tickets.get(0).getId());
+        assertEquals(ticket2.getId(), tickets.get(1).getId());
+        assertEquals(ticket3.getId(), tickets.get(2).getId());
+    }
+
+    @Test
+    void givenReservedTicketBeforeThreshold_whenFindAllByStatusAndTime_thenReturnsTicket() {
+        Ticket expiredReserved = createTicket("A1", 100.0, TicketStatus.RESERVED);
+        expiredReserved.setReservedAt(LocalDateTime.now().minusMinutes(2));
+        ticketRepository.save(expiredReserved);
+
+        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        List<Ticket> expiredTickets = ticketRepository.findAllByStatusAndReservedAtBefore(
+                TicketStatus.RESERVED, oneMinuteAgo);
+
+        assertEquals(1, expiredTickets.size());
+        assertEquals("A1", expiredTickets.get(0).getSeatNumber());
+    }
+
+    @Test
+    void givenSoldTicket_whenFindAllByStatus_thenExcludesSoldTickets() {
+        ticketRepository.save(createTicket("A1", 100.0, TicketStatus.SOLD));
+        ticketRepository.save(createTicket("A2", 150.0, TicketStatus.RESERVED));
+        ticketRepository.save(createTicket("A3", 200.0, TicketStatus.AVAILABLE));
+
+        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        List<Ticket> result = ticketRepository.findAllByStatusAndReservedAtBefore(
+                TicketStatus.RESERVED, oneMinuteAgo);
+
+        assertTrue(result.isEmpty());
+    }
+}

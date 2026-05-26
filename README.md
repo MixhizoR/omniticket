@@ -1,13 +1,13 @@
 # 🎫 OmniTicket: High-Concurrency Ticket Reservation System
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.2+-brightgreen)
-![Java](https://img.shields.io/badge/Java-21+-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.x-brightgreen)
+![Java](https://img.shields.io/badge/Java-21-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-darkblue)
 ![Redis](https://img.shields.io/badge/Redis-7.4-red)
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.1-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-**OmniTicket** is a state-of-the-art, high-concurrency ticket reservation microservice built with **Spring Boot 4.x**. Designed for massive traffic events (like concerts or major sporting events), it leverages advanced locking mechanisms and messaging queues to ensure data integrity and system resilience under heavy Load.
+**OmniTicket** is a state-of-the-art, high-concurrency ticket reservation microservice built with **Spring Boot 3.5.x**. Designed for massive traffic events (like concerts or major sporting events), it leverages advanced locking mechanisms and messaging queues to ensure data integrity and system resilience under heavy Load.
 
 ---
 
@@ -15,7 +15,7 @@
 
 -   **High Concurrency Support**: Utilizes **Redisson** for distributed locking to prevent overbooking and race conditions.
 -   **Layered Architecture**: Clean separation of concerns following the **Controller-Service-Repository** pattern.
--   **Modern Java**: Built using **Java 21** with full support for **Records**, **Virtual Threads** (where applicable), and **Spring Boot 4.0** features.
+-   **Modern Java**: Built using **Java 21** with full support for **Records**, **Virtual Threads** (where applicable), and **Spring Boot 3.5.x** features.
 -   **Real-time Notifications**: Integrated with **RabbitMQ** for asynchronous ticket issuance and status updates.
 -   **Interactive API Documentation**: Full **Scalar** integration for a modern, high-performance API testing interface.
 -   **Dockerized Deployment**: Includes a multi-stage Dockerfile and a robust `compose.yaml` for instant environment setup.
@@ -29,7 +29,7 @@
 As a Senior Architect, I've implemented several best practices into this project:
 
 1.  **Distributed Locking (Redisson)**: To handle high-concurrency reservations, we use Redis-based locking rather than simple database locks. This prevents database bottlenecking and ensures that ticket counts are never inconsistent.
-2.  **Spring Boot 4.x & Java 21**: We utilize the latest stable features, focusing on performance optimizations and modern coding standards (Lombok, Jakarta EE).
+2.  **Spring Boot 3.5.x & Java 21**: We utilize the latest stable features, focusing on performance optimizations and modern coding standards (Lombok, Jakarta EE).
 3.  **Asynchronous Messaging**: RabbitMQ decoupling ensures that the reservation experience remains fast for the user while slower processes (like sending confirmation emails) happen in the background.
 4.  **Database Strategy**: PostgreSQL 16 is used for ACID-compliant persistence, with optimized indexing for ticket availability checks.
 5.  **Observability (Actuator & Prometheus)**: Architecture includes built-in readiness/liveness probes and custom metrics to ensure the system is monitorable in production environments.
@@ -40,7 +40,7 @@ As a Senior Architect, I've implemented several best practices into this project
 
 | Component            | Technology                     |
 | :------------------- | :----------------------------- |
-| **Framework**        | Spring Boot 4.0.2+             |
+| **Framework**        | Spring Boot 3.5.x              |
 | **Language**         | Java 21                        |
 | **Database**         | PostgreSQL 16                  |
 | **Caching/Locking**  | Redis & Redisson               |
