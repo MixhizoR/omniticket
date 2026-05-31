@@ -8,15 +8,13 @@ import com.omniticket.reservation_service.service.TicketService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@SpringBootTest
-class TicketServiceConcurrencyTest extends BaseIntegrationTest {
+class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
 
     @Autowired
     private TicketService ticketService;

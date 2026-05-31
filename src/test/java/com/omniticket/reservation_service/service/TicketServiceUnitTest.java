@@ -202,12 +202,21 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenReservedTicket_whenPurchase_thenPublishesMessageAndReturnsTicket() {
+    void givenReservedTicket_whenPurchase_thenPublishesMessageAndReturnsTicket() throws InterruptedException {
         Ticket reservedTicket = createTicket(1L, "A1", 100.0, TicketStatus.RESERVED);
         Ticket soldTicket = createTicket(1L, "A1", 100.0, TicketStatus.SOLD);
 
+        when(redissonClient.getLock(anyString())).thenReturn(rLock);
+        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        TransactionStatus transactionStatus = mock(TransactionStatus.class);
+        when(transactionTemplate.execute(any(TransactionCallback.class))).thenAnswer(invocation -> {
+            TransactionCallback<Ticket> callback = invocation.getArgument(0);
+            return callback.doInTransaction(transactionStatus);
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenReturn(soldTicket);
+        when(rLock.isLocked()).thenReturn(true);
+        when(rLock.isHeldByCurrentThread()).thenReturn(true);
 
         Ticket result = ticketService.purchaseTicket(1L);
 
@@ -215,6 +224,9 @@ class TicketServiceUnitTest {
         assertEquals(TicketStatus.SOLD, result.getStatus());
         assertNull(result.getReservedAt());
 
+        verify(redissonClient).getLock("ticket-lock:" + 1L);
+        verify(rLock).tryLock(5, 10, TimeUnit.SECONDS);
+        verify(rLock).unlock();
         verify(rabbitTemplate).convertAndSend(
                 eq(RabbitMQConfig.EXCHANGE_NAME),
                 eq(RabbitMQConfig.ROUTING_KEY),
@@ -222,13 +234,24 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenNonReservedTicket_whenPurchase_thenThrowsRuntimeException() {
+    void givenNonReservedTicket_whenPurchase_thenThrowsRuntimeException() throws InterruptedException {
         Ticket availableTicket = createTicket(1L, "A1", 100.0, TicketStatus.AVAILABLE);
+
+        when(redissonClient.getLock(anyString())).thenReturn(rLock);
+        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        TransactionStatus transactionStatus = mock(TransactionStatus.class);
+        when(transactionTemplate.execute(any(TransactionCallback.class))).thenAnswer(invocation -> {
+            TransactionCallback<Ticket> callback = invocation.getArgument(0);
+            return callback.doInTransaction(transactionStatus);
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(availableTicket));
+        when(rLock.isLocked()).thenReturn(true);
+        when(rLock.isHeldByCurrentThread()).thenReturn(true);
 
         RuntimeException exception = assertThrows(RuntimeException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("rezervasyon"));
+        assertTrue(exception.getMessage().contains("already sold/reserved"));
+        verify(rLock).unlock();
         verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
     }
 }

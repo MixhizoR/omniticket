@@ -1,13 +1,10 @@
 package com.omniticket.reservation_service.lock;
 
-import com.omniticket.reservation_service.BaseIntegrationTest;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import com.omniticket.reservation_service.AbstractBaseIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.redisson.Redisson;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.redisson.config.Config;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -18,24 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
-class RedissonLockIntegrationTest extends BaseIntegrationTest {
+class RedissonLockIntegrationTest extends AbstractBaseIntegrationTest {
 
-    private static RedissonClient redissonClient;
-
-    @BeforeAll
-    static void setUp() {
-        Config config = new Config();
-        config.useSingleServer()
-                .setAddress("redis://" + redis.getHost() + ":" + redis.getFirstMappedPort());
-        redissonClient = Redisson.create(config);
-    }
-
-    @AfterAll
-    static void tearDown() {
-        if (redissonClient != null) {
-            redissonClient.shutdown();
-        }
-    }
+    @Autowired
+    private RedissonClient redissonClient;
 
     @Test
     void givenRedisAvailable_whenAcquireLock_thenLockIsAcquired() {
@@ -55,32 +38,36 @@ class RedissonLockIntegrationTest extends BaseIntegrationTest {
     void givenLockHeld_whenMultipleThreadsTryLock_thenOnlyOneAcquires() throws InterruptedException {
         int numberOfThreads = 10;
         AtomicInteger successCount = new AtomicInteger(0);
-        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch finishLatch = new CountDownLatch(numberOfThreads);
 
         ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads);
 
         for (int i = 0; i < numberOfThreads; i++) {
             executor.execute(() -> {
                 try {
-                    latch.await();
+                    startLatch.await(); // Tüm threadler aynı anda başlasın diye bekle
                     RLock threadLock = redissonClient.getLock("test-lock-2");
-                    if (threadLock.tryLock(1, 5, TimeUnit.SECONDS)) {
+                    // tryLock() bekleme süresi olmadan denenir. Kilidi alamazsa anında false döner!
+                    if (threadLock.tryLock()) {
                         try {
                             successCount.incrementAndGet();
-                            Thread.sleep(100);
+                            Thread.sleep(500); // Kilidi tutan thread biraz beklesin
                         } finally {
                             threadLock.unlock();
                         }
                     }
                 } catch (Exception e) {
-                    // Lock acquisition failure is expected
+                    // Beklenen istisna, bir şey yapma
+                } finally {
+                    finishLatch.countDown();
                 }
             });
         }
 
-        latch.countDown();
+        startLatch.countDown(); // Threadleri serbest bırak
+        finishLatch.await(10, TimeUnit.SECONDS); // Tüm threadlerin bitmesini bekle
         executor.shutdown();
-        executor.awaitTermination(15, TimeUnit.SECONDS);
 
         assertEquals(1, successCount.get(),
                 "Only one thread should acquire the lock at a time");
@@ -99,7 +86,6 @@ class RedissonLockIntegrationTest extends BaseIntegrationTest {
         Thread t2 = new Thread(() -> {
             RLock otherLock = redissonClient.getLock("test-lock-3");
             threadStarted.countDown();
-            // Busy-wait trying to acquire the lock
             while (true) {
                 if (otherLock.tryLock()) {
                     secondAcquirer.incrementAndGet();
@@ -112,11 +98,9 @@ class RedissonLockIntegrationTest extends BaseIntegrationTest {
         t2.start();
         threadStarted.await(2, TimeUnit.SECONDS);
 
-        // Give the thread a moment to attempt and fail
         await().atMost(1, TimeUnit.SECONDS).until(() -> secondAcquirer.get() == 0);
         assertEquals(0, secondAcquirer.get());
 
-        // Now unlock so the second thread can proceed
         lock.unlock();
 
         await().atMost(2, TimeUnit.SECONDS).until(() -> secondAcquirer.get() == 1);
@@ -145,7 +129,6 @@ class RedissonLockIntegrationTest extends BaseIntegrationTest {
 
         t2.start();
 
-        // Wait for the timeout attempt to complete
         await().atMost(5, TimeUnit.SECONDS).until(() -> !t2.isAlive());
 
         assertEquals(0, acquired.get(),
