@@ -1,53 +1,57 @@
 name: OmniTicket CI/CD Pipeline
 
-# Pipeline sadece main branch'e push veya pull request yapıldığında tetiklenir
 on:
-    push:
-        branches: ["main"]
-    pull_request:
-        branches: ["main"]
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
 
 jobs:
-    build-and-test:
-        runs-on: ubuntu-latest # GitHub'ın bize verdiği geçici sanal makine
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-        steps:
-            # 1. Kodu sanal makineye çek
-            - name: Checkout Source Code
-              uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "maven"
 
-            # 2. Java 21 ortamını kur
-            - name: Set up Java 21
-              uses: actions/setup-java@v4
-              with:
-                  java-version: "21"
-                  distribution: "temurin"
-                  cache: "maven" # Bağımlılıkları önbelleğe alarak build süresini kısaltır
+      - name: Run Maven Tests
+        run: ./mvnw clean verify
 
-            # 3. Testleri Çalıştır (Testcontainers burada çalışacak)
-            - name: Run Maven Tests
-              run: ./mvnw clean verify
+  docker-build-and-push:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
 
-    docker-build-and-push:
-        needs: build-and-test # Bu job, build-and-test başarılı olmadan ASLA başlamaz
-        runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/main'
+    # BU KISIM ZORUNLU! GHCR'a push yapabilmek için paket yazma yetkisi şart
+    permissions:
+      contents: read
+      packages: write
 
-        steps:
-            - name: Checkout Source Code
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-            - name: Log in to GitHub Container Registry
-              uses: docker/login-action@v3
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            # 5. İmajı Build et ve Pushla
-            - name: Build and Push Docker Image
-              uses: docker/build-push-action@v5
-              with:
-                  context: .
-                  push: true
-                  tags: ghcr.io/${{ github.repository_owner }}/omniticket-service:latest, ghcr.io/${{ github.repository_owner }}/omniticket-service:${{ github.sha }}
+      - name: Set lowercase image name
+        run: |
+          LOWERCASE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/${LOWERCASE_OWNER}/omniticket-service" >> "$GITHUB_ENV"
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:latest, ${{ env.IMAGE_NAME }}:${{ github.sha }}
