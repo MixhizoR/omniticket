@@ -1,8 +1,8 @@
 package com.omniticket.reservation_service.service;
 
 import com.omniticket.reservation_service.config.RabbitMQConfig;
+import com.omniticket.reservation_service.exception.EmailSendingException;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
-import jakarta.mail.MessagingException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +31,7 @@ public class TicketNotificationConsumer {
                     message.getSeatNumber(),
                     message.getPrice());
             log.info("✅ Mail başarıyla gönderildi: {}", message.getUserEmail());
-        } catch (MessagingException e) {
+        } catch (EmailSendingException e) {
             log.error("❌ Mail gönderilemedi: {}", e.getMessage());
             throw new RuntimeException("Mail gönderilemedi", e);
         }

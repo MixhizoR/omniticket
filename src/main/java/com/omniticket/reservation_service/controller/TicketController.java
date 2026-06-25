@@ -9,6 +9,7 @@ import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.service.TicketService;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import lombok.RequiredArgsConstructor;
 
@@ -62,7 +63,7 @@ public class TicketController {
         ticket.setSeatNumber("T101");
         ticket.setPrice(100.0);
         ticket.setStatus(TicketStatus.RESERVED);
-        ticket.setReservedAt(LocalDateTime.now().minusMinutes(2)); // 2 dakika önce rezerve edilmiş
+        ticket.setReservedAt(LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(2));
         return ResponseEntity.ok(ticketService.createTicket(ticket));
     }
 

@@ -2,6 +2,7 @@ package com.omniticket.reservation_service.service;
 
 import com.omniticket.reservation_service.config.RabbitMQConfig;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
+import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
 import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.model.TicketStatus;
@@ -254,7 +255,7 @@ class TicketServiceUnitTest {
 
         RuntimeException exception = assertThrows(RuntimeException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("already sold/reserved"));
+        assertInstanceOf(TicketAlreadyReservedException.class, exception);
         verify(rLock).unlock();
         verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
     }
