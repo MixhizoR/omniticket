@@ -155,6 +155,7 @@ class TicketServiceUnitTest {
         verify(ticketRepository).delete(ticket);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void givenRedisConnection_whenGetLock_thenReturnsRLock() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
@@ -180,6 +181,7 @@ class TicketServiceUnitTest {
         verify(rLock).unlock();
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void givenTicketAlreadyReserved_whenReserve_thenThrowsRuntimeException() throws InterruptedException {
         Ticket reservedTicket = createTicket(1L, "A1", 100.0, TicketStatus.RESERVED);
@@ -201,6 +203,7 @@ class TicketServiceUnitTest {
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void givenReservedTicket_whenPurchase_thenPublishesMessageAndReturnsTicket() throws InterruptedException {
         Ticket reservedTicket = createTicket(1L, "A1", 100.0, TicketStatus.RESERVED);
@@ -233,6 +236,7 @@ class TicketServiceUnitTest {
                 any(Object.class));
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void givenNonReservedTicket_whenPurchase_thenThrowsRuntimeException() throws InterruptedException {
         Ticket availableTicket = createTicket(1L, "A1", 100.0, TicketStatus.AVAILABLE);

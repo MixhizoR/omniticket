@@ -1,6 +1,7 @@
 package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -9,6 +10,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,9 +18,12 @@ import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
+
 import com.omniticket.reservation_service.config.RabbitMQConfig;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
 import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
+import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
+import com.omniticket.reservation_service.exception.TicketSystemException;
 
 @Service
 @RequiredArgsConstructor
@@ -64,7 +69,7 @@ public class TicketService {
 
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Şu an çok yoğun, lütfen tekrar deneyin!");
+                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
             }
 
             try {
@@ -72,14 +77,14 @@ public class TicketService {
 
                 return transactionTemplate.execute(status -> {
                     Ticket ticket = ticketRepository.findById(id)
-                            .orElseThrow(() -> new RuntimeException("Bilet bulunamadı!"));
+                            .orElseThrow(() -> new ResourceNotFoundException("Bilet bulunamadı! ID: " + id));
 
                     if (ticket.getStatus() != TicketStatus.AVAILABLE) {
-                        throw new TicketAlreadyReservedException("This ticket is already sold/reserved!");
+                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
                     }
 
                     ticket.setStatus(TicketStatus.RESERVED);
-                    ticket.setReservedAt(LocalDateTime.now());
+                    ticket.setReservedAt(LocalDateTime.now(ZoneId.of("UTC")));
 
                     return ticketRepository.save(ticket);
                 });
@@ -92,7 +97,7 @@ public class TicketService {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Sistemsel bir hata oluştu.");
+            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
         }
     }
 
@@ -101,7 +106,7 @@ public class TicketService {
 
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Ticket is currently being processed, please try again.");
+                throw new TicketLockAcquisitionException("Ticket is currently being processed, please try again.");
             }
 
             try {
@@ -109,10 +114,10 @@ public class TicketService {
 
                 Ticket soldTicket = transactionTemplate.execute(status -> {
                     Ticket ticket = ticketRepository.findById(id)
-                            .orElseThrow(() -> new RuntimeException("Bilet bulunamadı! ID: " + id));
+                            .orElseThrow(() -> new ResourceNotFoundException("Bilet bulunamadı! ID: " + id));
 
                     if (ticket.getStatus() != TicketStatus.RESERVED) {
-                        throw new TicketAlreadyReservedException("This ticket is already sold/reserved!");
+                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
                     }
 
                     ticket.setStatus(TicketStatus.SOLD);
@@ -142,7 +147,7 @@ public class TicketService {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Sistemsel bir hata oluştu.");
+            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
         }
     }
 }

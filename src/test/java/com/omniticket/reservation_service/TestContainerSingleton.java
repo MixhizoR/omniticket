@@ -9,6 +9,7 @@ import org.testcontainers.containers.RabbitMQContainer;
  * Ensures containers start ONLY ONCE per JVM and survive
  * across different Spring ApplicationContexts.
  */
+@SuppressWarnings("resource")
 public final class TestContainerSingleton {
 
     private static final PostgreSQLContainer<?> postgres;
