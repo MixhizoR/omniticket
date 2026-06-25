@@ -17,7 +17,6 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -80,7 +79,6 @@ class TicketControllerTest {
 
     @Test
     void givenValidTicket_whenCreateTicket_thenReturnsCreatedTicket() throws Exception {
-        Ticket ticket = createTicket(null, "B1", 200.0, TicketStatus.AVAILABLE);
         Ticket savedTicket = createTicket(1L, "B1", 200.0, TicketStatus.AVAILABLE);
 
         when(ticketService.createTicket(any(Ticket.class))).thenReturn(savedTicket);
