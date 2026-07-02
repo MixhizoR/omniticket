@@ -1,15 +1,19 @@
 package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
+import com.omniticket.reservation_service.model.OutboxEvent;
+import com.omniticket.reservation_service.repository.OutboxRepository;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,12 +22,10 @@ import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
-
-import com.omniticket.reservation_service.config.RabbitMQConfig;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
-import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
-import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
-import com.omniticket.reservation_service.exception.TicketSystemException;
+import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
+import com.omniticket.reservation_service.dto.TicketResponseDTO;
+import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 
 @Service
 @RequiredArgsConstructor
@@ -33,121 +35,161 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
-    private final RabbitTemplate rabbitTemplate;
+    private final OutboxRepository outboxRepository;
+    private final ObjectMapper objectMapper;
 
-    public Ticket createTicket(Ticket ticket) {
+    @Transactional
+    public TicketResponseDTO createTicket(TicketCreateRequestDTO ticketCreateRequestDTO) {
+        Ticket ticket = new Ticket();
+        ticket.setSeatNumber(ticketCreateRequestDTO.getSeatNumber());
+        ticket.setPrice(ticketCreateRequestDTO.getPrice());
+        ticket.setStatus(ticketCreateRequestDTO.getStatus());
         log.info("Yeni bilet oluşturuluyor: {}", ticket.getSeatNumber());
-        return ticketRepository.save(ticket);
+        Ticket savedTicket = ticketRepository.save(ticket);
+        return mapToResponseDTO(savedTicket);
     }
 
-    public Ticket getTicket(Long id) {
-        return ticketRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket not found with id: " + id));
+    @Transactional(readOnly = true)
+    public TicketResponseDTO getTicket(Long id) {
+        Ticket ticket = findTicketById(id);
+        return mapToResponseDTO(ticket);
     }
 
-    public List<Ticket> getAllTickets() {
-        return ticketRepository.findAllByOrderByIdAsc();
+    @Transactional(readOnly = true)
+    public List<TicketResponseDTO> getAllTickets() {
+        List<Ticket> tickets = ticketRepository.findAllByOrderByIdAsc();
+        return tickets.stream()
+                .map(this::mapToResponseDTO)
+                .toList();
     }
 
-    public Ticket updateTicket(Long id, Ticket ticketDetails) {
-        Ticket existingTicket = getTicket(id);
+    @Transactional
+    public TicketResponseDTO updateTicket(Long id, TicketUpdateRequestDTO ticketDetails) {
+        Ticket existingTicket = findTicketById(id);
         existingTicket.setSeatNumber(ticketDetails.getSeatNumber());
         existingTicket.setPrice(ticketDetails.getPrice());
         existingTicket.setStatus(ticketDetails.getStatus());
+
+        if (ticketDetails.getStatus() == TicketStatus.RESERVED) {
+            existingTicket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        } else {
+            existingTicket.setReservedAt(null);
+        }
+
         log.info("Bilet güncellendi: {}", id);
-        return ticketRepository.save(existingTicket);
+        return mapToResponseDTO(existingTicket);
     }
 
+    @Transactional
     public void deleteTicket(Long id) {
-        Ticket ticket = getTicket(id);
-        ticketRepository.delete(ticket);
+        ticketRepository.deleteById(id);
         log.warn("Bilet silindi: {}", id);
     }
 
-    public Ticket reserveTicket(Long id) {
+    // @Transactional KALDIRILDI. Transaction kontrolü TransactionTemplate'te.
+    public TicketResponseDTO reserveTicket(Long id) {
         RLock lock = redissonClient.getLock("ticket-lock:" + id);
+        boolean locked = false;
 
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
+                throw new RuntimeException("Şu an çok yoğun, lütfen tekrar deneyin!");
             }
+            locked = true;
+            log.info("Kilit alındı, işlem başlıyor... \uD83D\uDD10");
 
-            try {
-                log.info("Kilit alındı, işlem başlıyor... 🔐");
+            // Transaction burada başlıyor ve bitiyor. Commit işlemi lock açılmadan
+            // kesinleşecek.
+            return transactionTemplate.execute(status -> {
+                Ticket ticket = findTicketById(id);
 
-                return transactionTemplate.execute(status -> {
-                    Ticket ticket = ticketRepository.findById(id)
-                            .orElseThrow(() -> new ResourceNotFoundException("Bilet bulunamadı! ID: " + id));
-
-                    if (ticket.getStatus() != TicketStatus.AVAILABLE) {
-                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
-                    }
-
-                    ticket.setStatus(TicketStatus.RESERVED);
-                    ticket.setReservedAt(LocalDateTime.now(ZoneId.of("UTC")));
-
-                    return ticketRepository.save(ticket);
-                });
-
-            } finally {
-                if (lock.isLocked() && lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                    log.info("İşlem bitti, kilit açıldı.");
+                if (ticket.getStatus() != TicketStatus.AVAILABLE) {
+                    throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
                 }
-            }
+
+                ticket.setStatus(TicketStatus.RESERVED);
+                ticket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+
+                Ticket savedTicket = ticketRepository.save(ticket);
+                return mapToResponseDTO(savedTicket);
+            });
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
+            throw new RuntimeException("Sistemsel bir hata oluştu.");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+                log.info("İşlem bitti, kilit açıldı.");
+            }
         }
     }
 
-    public Ticket purchaseTicket(Long id) {
+    // @Transactional KALDIRILDI. Outbox ve bilet işlemi TransactionTemplate içinde.
+    public TicketResponseDTO purchaseTicket(Long id) {
         RLock lock = redissonClient.getLock("ticket-lock:" + id);
+        boolean locked = false;
 
         try {
-            if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new TicketLockAcquisitionException("Ticket is currently being processed, please try again.");
+            if (!lock.tryLock(5, -1, TimeUnit.SECONDS)) {
+                throw new RuntimeException("Bilet şu anda işleniyor...");
             }
+            locked = true;
 
-            try {
-                log.info("Kilit alındı, işlem başlıyor... 🔐");
-
-                Ticket soldTicket = transactionTemplate.execute(status -> {
-                    Ticket ticket = ticketRepository.findById(id)
-                            .orElseThrow(() -> new ResourceNotFoundException("Bilet bulunamadı! ID: " + id));
+            return transactionTemplate.execute(status -> {
+                try {
+                    Ticket ticket = findTicketById(id);
 
                     if (ticket.getStatus() != TicketStatus.RESERVED) {
-                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
+                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmemiş!");
                     }
 
                     ticket.setStatus(TicketStatus.SOLD);
                     ticket.setReservedAt(null);
+                    Ticket soldTicket = ticketRepository.save(ticket);
 
-                    log.info("Bilet başarıyla satıldı: {}", id);
-                    return ticketRepository.save(ticket);
-                });
+                    String payloadJson = objectMapper.writeValueAsString(
+                            new TicketPurchaseMessage(
+                                    soldTicket.getId(),
+                                    soldTicket.getSeatNumber(),
+                                    "no-reply@omniticket.com",
+                                    soldTicket.getPrice()));
 
-                // RabbitMQ mesajı transaction başarıyla commit edildikten SONRA gönderilir
-                TicketPurchaseMessage message = new TicketPurchaseMessage(
-                        soldTicket.getId(),
-                        soldTicket.getSeatNumber(),
-                        "no-reply@omniticket.com",
-                        soldTicket.getPrice());
+                    OutboxEvent event = new OutboxEvent();
+                    event.setAggregateId(String.valueOf(soldTicket.getId()));
+                    event.setEventType("TICKET_SOLD");
+                    event.setPayload(payloadJson);
+                    outboxRepository.save(event);
 
-                rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, message);
-                log.info("RabbitMQ'ya mesaj fırlatıldı: {}", message);
+                    return mapToResponseDTO(soldTicket);
 
-                return soldTicket;
-
-            } finally {
-                if (lock.isLocked() && lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                    log.info("İşlem bitti, kilit açıldı.");
+                } catch (JsonProcessingException e) {
+                    status.setRollbackOnly(); // Serileştirme hatasında rollback tetikle
+                    throw new RuntimeException("Mesaj formatı hatası", e);
                 }
-            }
+            });
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
+            throw new RuntimeException("Sistemsel hata");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
+    }
+
+    private Ticket findTicketById(Long id) {
+        return ticketRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Ticket not found with id: " + id));
+    }
+
+    private TicketResponseDTO mapToResponseDTO(Ticket ticket) {
+        return new TicketResponseDTO(
+                ticket.getId(),
+                ticket.getSeatNumber(),
+                ticket.getPrice(),
+                ticket.getStatus(),
+                ticket.getReservedAt());
     }
 }

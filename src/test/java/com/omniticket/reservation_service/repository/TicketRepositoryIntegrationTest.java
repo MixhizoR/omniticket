@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -18,7 +19,7 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
     @Autowired
     private TicketRepository ticketRepository;
 
-    private Ticket createTicket(String seatNumber, Double price, TicketStatus status) {
+    private Ticket createTicket(String seatNumber, BigDecimal price, TicketStatus status) {
         Ticket ticket = new Ticket();
         ticket.setSeatNumber(seatNumber);
         ticket.setPrice(price);
@@ -36,19 +37,19 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenTicket_whenSave_thenPersistsAndReturnsTicket() {
-        Ticket ticket = createTicket("A1", 100.0, TicketStatus.AVAILABLE);
+        Ticket ticket = createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
 
         Ticket savedTicket = ticketRepository.save(ticket);
 
         assertNotNull(savedTicket.getId());
         assertEquals("A1", savedTicket.getSeatNumber());
-        assertEquals(100.0, savedTicket.getPrice());
+        assertEquals(BigDecimal.valueOf(100.0), savedTicket.getPrice());
         assertEquals(TicketStatus.AVAILABLE, savedTicket.getStatus());
     }
 
     @Test
     void givenPersistedTicket_whenFindById_thenReturnsTicket() {
-        Ticket ticket = createTicket("A1", 100.0, TicketStatus.AVAILABLE);
+        Ticket ticket = createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
         Ticket savedTicket = ticketRepository.save(ticket);
 
         Optional<Ticket> foundTicket = ticketRepository.findById(savedTicket.getId());
@@ -60,9 +61,9 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenMultipleTickets_whenFindAllByOrder_thenReturnsOrderedAsc() {
-        Ticket ticket1 = ticketRepository.save(createTicket("B2", 150.0, TicketStatus.AVAILABLE));
-        Ticket ticket2 = ticketRepository.save(createTicket("A1", 100.0, TicketStatus.AVAILABLE));
-        Ticket ticket3 = ticketRepository.save(createTicket("C3", 200.0, TicketStatus.AVAILABLE));
+        Ticket ticket1 = ticketRepository.save(createTicket("B2", BigDecimal.valueOf(150.0), TicketStatus.AVAILABLE));
+        Ticket ticket2 = ticketRepository.save(createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE));
+        Ticket ticket3 = ticketRepository.save(createTicket("C3", BigDecimal.valueOf(200.0), TicketStatus.AVAILABLE));
 
         List<Ticket> tickets = ticketRepository.findAllByOrderByIdAsc();
 
@@ -74,7 +75,7 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenReservedTicketBeforeThreshold_whenFindAllByStatusAndTime_thenReturnsTicket() {
-        Ticket expiredReserved = createTicket("A1", 100.0, TicketStatus.RESERVED);
+        Ticket expiredReserved = createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
         expiredReserved.setReservedAt(LocalDateTime.now().minusMinutes(2));
         ticketRepository.save(expiredReserved);
 
@@ -88,9 +89,9 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenSoldTicket_whenFindAllByStatus_thenExcludesSoldTickets() {
-        ticketRepository.save(createTicket("A1", 100.0, TicketStatus.SOLD));
-        ticketRepository.save(createTicket("A2", 150.0, TicketStatus.RESERVED));
-        ticketRepository.save(createTicket("A3", 200.0, TicketStatus.AVAILABLE));
+        ticketRepository.save(createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD));
+        ticketRepository.save(createTicket("A2", BigDecimal.valueOf(150.0), TicketStatus.RESERVED));
+        ticketRepository.save(createTicket("A3", BigDecimal.valueOf(200.0), TicketStatus.AVAILABLE));
 
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
         List<Ticket> result = ticketRepository.findAllByStatusAndReservedAtBefore(

@@ -34,3 +34,5 @@ build/
 ### VS Code ###
 .vscode/
 impplan.md
+repomix-output.xml
+repomix-output.txt

@@ -24,9 +24,9 @@ public class TicketScheduler {
     @Scheduled(fixedRate = 30000)
     @Transactional
     public void releaseExpiredTickets() {
-        log.info("Checking for expired tickets..." + LocalDateTime.now());
+        log.info("Checking for expired tickets..." + LocalDateTime.now(java.time.ZoneOffset.UTC));
 
-        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        LocalDateTime oneMinuteAgo = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(1);
 
         List<Ticket> reservedTickets = ticketRepository.findAllByStatusAndReservedAtBefore(
                 TicketStatus.RESERVED, oneMinuteAgo);

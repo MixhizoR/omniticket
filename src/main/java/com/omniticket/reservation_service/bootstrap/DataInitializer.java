@@ -1,5 +1,7 @@
 package com.omniticket.reservation_service.bootstrap;
 
+import java.math.BigDecimal;
+
 import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
@@ -26,7 +28,7 @@ public class DataInitializer implements ApplicationRunner {
             for (int i = 1; i <= 5; i++) {
                 Ticket ticket = new Ticket();
                 ticket.setSeatNumber("Sıra-A Koltuk-" + i);
-                ticket.setPrice(150.0 * i);
+                ticket.setPrice(BigDecimal.valueOf(150.0 * i));
                 ticket.setStatus(TicketStatus.AVAILABLE);
 
                 ticketRepository.save(ticket);
