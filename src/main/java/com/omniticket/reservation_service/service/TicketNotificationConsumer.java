@@ -33,7 +33,6 @@ public class TicketNotificationConsumer {
             log.info("✅ Mail başarıyla gönderildi: {}", message.getUserEmail());
         } catch (EmailSendingException e) {
             log.error("❌ Mail gönderilemedi: {}", e.getMessage());
-            throw new RuntimeException("Mail gönderilemedi", e);
         }
     }
 }

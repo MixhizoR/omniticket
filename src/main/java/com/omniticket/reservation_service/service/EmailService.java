@@ -19,7 +19,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    public void sendTicketEmail(String to, String seat, BigDecimal price) throws MessagingException {
+    public void sendTicketEmail(String to, String seat, BigDecimal price) {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
