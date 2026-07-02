@@ -7,6 +7,8 @@ import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
+import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
+import com.omniticket.reservation_service.exception.TicketSystemException;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.repository.OutboxRepository;
 import org.redisson.api.RLock;
@@ -26,8 +28,6 @@ import com.omniticket.reservation_service.exception.ResourceNotFoundException;
 import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
-
-import com.omniticket.reservation_service.config.RabbitMQConfig;
 
 @Service
 @RequiredArgsConstructor
@@ -94,7 +94,7 @@ public class TicketService {
 
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Şu an çok yoğun, lütfen tekrar deneyin!");
+                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
             }
             locked = true;
             log.info("Kilit alındı, işlem başlıyor... \uD83D\uDD10");

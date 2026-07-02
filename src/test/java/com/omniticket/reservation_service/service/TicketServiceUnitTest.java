@@ -185,7 +185,6 @@ class TicketServiceUnitTest {
         verify(ticketRepository).deleteById(1L);
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void givenRedisConnection_whenGetLock_thenReturnsRLock() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
@@ -214,7 +213,6 @@ class TicketServiceUnitTest {
         verify(rLock).unlock();
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void givenTicketAlreadyReserved_whenReserve_thenThrowsRuntimeException() throws InterruptedException {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
@@ -234,7 +232,6 @@ class TicketServiceUnitTest {
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void givenRedisConnection_whenLockFails_thenThrowsRuntimeException() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
@@ -267,6 +264,10 @@ class TicketServiceUnitTest {
 
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
+            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenReturn(soldTicket);
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -301,13 +302,16 @@ class TicketServiceUnitTest {
         verify(ticketRepository, never()).deleteById(anyLong());
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void givenNonReservedTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() throws InterruptedException {
         Ticket availableTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
 
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
+            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(availableTicket));
         when(rLock.isHeldByCurrentThread()).thenReturn(true);
         doNothing().when(rLock).unlock();
@@ -326,6 +330,10 @@ class TicketServiceUnitTest {
 
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
+            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(soldTicket));
         when(rLock.isHeldByCurrentThread()).thenReturn(true);
         doNothing().when(rLock).unlock();
@@ -345,7 +353,7 @@ class TicketServiceUnitTest {
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
 
         RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("işleniyor"));
+        assertTrue(exception.getMessage().contains("being processed"));
 
         verify(rLock, never()).unlock();
         verify(ticketRepository, never()).findById(anyLong());
@@ -359,7 +367,7 @@ class TicketServiceUnitTest {
                 .thenThrow(new InterruptedException("interrupted"));
 
         RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("Sistemsel hata"));
+        assertTrue(exception.getMessage().contains("Sistemsel bir hata oluştu"));
 
         verify(rLock, never()).unlock();
         verify(ticketRepository, never()).findById(anyLong());
@@ -381,6 +389,10 @@ class TicketServiceUnitTest {
 
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
+            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(rLock.isHeldByCurrentThread()).thenReturn(true);

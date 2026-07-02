@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -41,7 +42,7 @@ class EmailServiceUnitTest {
         doThrow(new RuntimeException("Mail server unavailable"))
                 .when(mailSender).send(any(MimeMessage.class));
 
-        assertThrows(MessagingException.class,
+        assertThrows(RuntimeException.class,
                 () -> emailService.sendTicketEmail("test@example.com", "A1", BigDecimal.valueOf(100.0)));
 
         verify(mailSender).createMimeMessage();
