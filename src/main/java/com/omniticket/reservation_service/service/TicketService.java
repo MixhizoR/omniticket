@@ -1,6 +1,7 @@
 package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -14,6 +15,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,12 @@ import com.omniticket.reservation_service.exception.ResourceNotFoundException;
 import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
+
+import com.omniticket.reservation_service.config.RabbitMQConfig;
+import com.omniticket.reservation_service.exception.ResourceNotFoundException;
+import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
+import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
+import com.omniticket.reservation_service.exception.TicketSystemException;
 
 @Service
 @RequiredArgsConstructor
@@ -92,7 +100,7 @@ public class TicketService {
 
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Şu an çok yoğun, lütfen tekrar deneyin!");
+                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
             }
             locked = true;
             log.info("Kilit alındı, işlem başlıyor... \uD83D\uDD10");
@@ -113,7 +121,7 @@ public class TicketService {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Sistemsel bir hata oluştu.");
+            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
         } finally {
             if (locked && lock.isHeldByCurrentThread()) {
                 lock.unlock();
@@ -128,7 +136,7 @@ public class TicketService {
 
         try {
             if (!lock.tryLock(5, -1, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Bilet şu anda işleniyor...");
+                throw new TicketLockAcquisitionException("Ticket is currently being processed, please try again.");
             }
             locked = true;
 
@@ -167,7 +175,7 @@ public class TicketService {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Sistemsel hata");
+            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
         } finally {
             if (locked && lock.isHeldByCurrentThread()) {
                 lock.unlock();

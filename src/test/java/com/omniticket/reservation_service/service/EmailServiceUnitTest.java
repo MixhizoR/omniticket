@@ -42,7 +42,7 @@ class EmailServiceUnitTest {
         doThrow(new RuntimeException("Mail server unavailable"))
                 .when(mailSender).send(any(MimeMessage.class));
 
-        assertThrows(RuntimeException.class,
+        assertThrows(MessagingException.class,
                 () -> emailService.sendTicketEmail("test@example.com", "A1", BigDecimal.valueOf(100.0)));
 
         verify(mailSender).createMimeMessage();

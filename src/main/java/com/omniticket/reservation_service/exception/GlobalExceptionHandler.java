@@ -23,6 +23,20 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(TicketLockAcquisitionException.class)
+    public ResponseEntity<ErrorResponse> handleTicketLockAcquisitionException(TicketLockAcquisitionException ex) {
+        ErrorResponse errorResponse = new ErrorResponse(HttpStatus.SERVICE_UNAVAILABLE.value(), ex.getMessage());
+        return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @ExceptionHandler(TicketSystemException.class)
+    public ResponseEntity<ErrorResponse> handleTicketSystemException(TicketSystemException ex) {
+        log.error("Sistem hatası: ", ex);
+        ErrorResponse errorResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Bir sistem hatası oluştu: " + ex.getMessage());
+        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResourceFoundException(NoResourceFoundException ex) {
         // Log basmıyoruz veya sadece DEBUG seviyesinde basıyoruz ki konsol kirlenmesin
