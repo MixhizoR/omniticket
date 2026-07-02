@@ -7,6 +7,8 @@ import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
 import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
+import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
+import com.omniticket.reservation_service.exception.TicketSystemException;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.model.Ticket;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
@@ -214,7 +216,7 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenTicketAlreadyReserved_whenReserve_thenThrowsRuntimeException() throws InterruptedException {
+    void givenTicketAlreadyReserved_whenReserve_thenThrowsTicketAlreadyReservedException() throws InterruptedException {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
 
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
@@ -226,18 +228,18 @@ class TicketServiceUnitTest {
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(rLock.isHeldByCurrentThread()).thenReturn(true);
 
-        assertThrows(RuntimeException.class, () -> ticketService.reserveTicket(1L));
+        assertThrows(TicketAlreadyReservedException.class, () -> ticketService.reserveTicket(1L));
 
         verify(rLock).unlock();
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
 
     @Test
-    void givenRedisConnection_whenLockFails_thenThrowsRuntimeException() throws InterruptedException {
+    void givenRedisConnection_whenLockFails_thenThrowsTicketLockAcquisitionException() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.reserveTicket(1L));
+        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.reserveTicket(1L));
         assertTrue(exception.getMessage().contains("çok yoğun"));
 
         verify(rLock, never()).unlock();
@@ -245,12 +247,12 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenInterruptedLock_whenReserve_thenThrowsRuntimeException() throws InterruptedException {
+    void givenInterruptedLock_whenReserve_thenThrowsTicketSystemException() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class)))
                 .thenThrow(new InterruptedException("interrupted"));
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.reserveTicket(1L));
+        TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.reserveTicket(1L));
         assertTrue(exception.getMessage().contains("Sistemsel bir hata"));
 
         verify(rLock, never()).unlock();
@@ -348,11 +350,11 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenLockNotAcquired_whenPurchase_thenThrowsRuntimeException() throws InterruptedException {
+    void givenLockNotAcquired_whenPurchase_thenThrowsTicketLockAcquisitionException() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
+        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.purchaseTicket(1L));
         assertTrue(exception.getMessage().contains("being processed"));
 
         verify(rLock, never()).unlock();
@@ -361,12 +363,12 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenInterruptedLock_whenPurchase_thenThrowsRuntimeException() throws InterruptedException {
+    void givenInterruptedLock_whenPurchase_thenThrowsTicketSystemException() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(rLock);
         when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class)))
                 .thenThrow(new InterruptedException("interrupted"));
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
+        TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.purchaseTicket(1L));
         assertTrue(exception.getMessage().contains("Sistemsel bir hata oluştu"));
 
         verify(rLock, never()).unlock();

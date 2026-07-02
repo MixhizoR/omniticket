@@ -2,6 +2,7 @@ package com.omniticket.reservation_service.service;
 
 import java.math.BigDecimal;
 
+import com.omniticket.reservation_service.exception.EmailSendingException;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class EmailServiceUnitTest {
     }
 
     @Test
-    void givenMessagingException_whenSendTicketEmail_thenThrowsRuntimeException() {
+    void givenMessagingException_whenSendTicketEmail_thenThrowsEmailSendingException() {
         MimeMessage mimeMessage = mock(MimeMessage.class);
         when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
         doThrow(new RuntimeException("Mail server unavailable"))
