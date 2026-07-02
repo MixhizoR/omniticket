@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -26,7 +27,7 @@ class TicketSchedulerIntegrationTest extends AbstractBaseIntegrationTest {
         ticketRepository.deleteAll();
     }
 
-    private Ticket createTicket(String seatNumber, Double price, TicketStatus status) {
+    private Ticket createTicket(String seatNumber, BigDecimal price, TicketStatus status) {
         Ticket ticket = new Ticket();
         ticket.setSeatNumber(seatNumber);
         ticket.setPrice(price);
@@ -36,8 +37,8 @@ class TicketSchedulerIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenExpiredReservation_whenSchedulerRuns_thenTicketReleased() {
-        Ticket expiredReserved = createTicket("A1", 100.0, TicketStatus.RESERVED);
-        expiredReserved.setReservedAt(LocalDateTime.now().minusMinutes(2));
+        Ticket expiredReserved = createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
+        expiredReserved.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(2));
         ticketRepository.save(expiredReserved);
 
         ticketScheduler.releaseExpiredTickets();
@@ -50,8 +51,8 @@ class TicketSchedulerIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenFreshReservation_whenSchedulerRuns_thenTicketNotReleased() {
-        Ticket freshReserved = createTicket("B2", 150.0, TicketStatus.RESERVED);
-        freshReserved.setReservedAt(LocalDateTime.now());
+        Ticket freshReserved = createTicket("B2", BigDecimal.valueOf(150.0), TicketStatus.RESERVED);
+        freshReserved.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         ticketRepository.save(freshReserved);
 
         ticketScheduler.releaseExpiredTickets();
@@ -64,8 +65,8 @@ class TicketSchedulerIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenNoExpiredReservations_whenSchedulerRuns_thenNoChanges() {
-        Ticket availableTicket = createTicket("C3", 200.0, TicketStatus.AVAILABLE);
-        Ticket soldTicket = createTicket("D4", 250.0, TicketStatus.SOLD);
+        Ticket availableTicket = createTicket("C3", BigDecimal.valueOf(200.0), TicketStatus.AVAILABLE);
+        Ticket soldTicket = createTicket("D4", BigDecimal.valueOf(250.0), TicketStatus.SOLD);
         ticketRepository.save(availableTicket);
         ticketRepository.save(soldTicket);
 

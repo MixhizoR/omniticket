@@ -1,5 +1,6 @@
 package com.omniticket.reservation_service.model;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.*;
@@ -20,7 +21,7 @@ public class Ticket {
     private String seatNumber;
 
     @Column(nullable = false)
-    private Double price;
+    private BigDecimal price;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

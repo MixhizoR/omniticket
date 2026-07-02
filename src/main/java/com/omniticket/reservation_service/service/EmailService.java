@@ -1,5 +1,7 @@
 package com.omniticket.reservation_service.service;
 
+import java.math.BigDecimal;
+
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +17,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    public void sendTicketEmail(String to, String seat, Double price) throws MessagingException {
+    public void sendTicketEmail(String to, String seat, BigDecimal price) throws MessagingException {
         MimeMessage mimeMessage = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
 

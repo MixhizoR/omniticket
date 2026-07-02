@@ -52,7 +52,7 @@ class RedissonLockIntegrationTest extends AbstractBaseIntegrationTest {
                     if (threadLock.tryLock()) {
                         try {
                             successCount.incrementAndGet();
-                            Thread.sleep(500); // Kilidi tutan thread biraz beklesin
+                            TimeUnit.MILLISECONDS.sleep(500); // Kilidi tutan thread biraz beklesin
                         } finally {
                             threadLock.unlock();
                         }
@@ -109,7 +109,7 @@ class RedissonLockIntegrationTest extends AbstractBaseIntegrationTest {
     }
 
     @Test
-    void givenLockTimeout_whenWaitExceeds_thenLockNotAcquired() throws InterruptedException {
+    void givenLockTimeout_whenWaitExceeds_thenLockNotAcquired() {
         RLock lock = redissonClient.getLock("test-lock-4");
         lock.lock();
 

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,7 +32,7 @@ class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
     void givenAvailableTicket_when100ThreadsReserveSimultaneously_thenExactlyOneSuccess() throws InterruptedException {
         Ticket ticket = new Ticket();
         ticket.setSeatNumber("CONCUR-100");
-        ticket.setPrice(100.0);
+        ticket.setPrice(BigDecimal.valueOf(100.0));
         ticket.setStatus(TicketStatus.AVAILABLE);
         Ticket savedTicket = ticketRepository.save(ticket);
 
@@ -67,7 +68,7 @@ class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
     void givenReservedTicket_whenConcurrentPurchaseAttempts_thenFirstSucceedsRestFail() throws InterruptedException {
         Ticket ticket = new Ticket();
         ticket.setSeatNumber("CONCUR-PURCHASE");
-        ticket.setPrice(150.0);
+        ticket.setPrice(BigDecimal.valueOf(150.0));
         ticket.setStatus(TicketStatus.AVAILABLE);
         Ticket savedTicket = ticketRepository.save(ticket);
         ticketService.reserveTicket(savedTicket.getId());
@@ -108,7 +109,7 @@ class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
         for (int i = 0; i < ticketCount; i++) {
             Ticket ticket = new Ticket();
             ticket.setSeatNumber("MULTI-" + (i + 1));
-            ticket.setPrice(100.0 * (i + 1));
+            ticket.setPrice(BigDecimal.valueOf(100.0 * (i + 1)));
             ticket.setStatus(TicketStatus.AVAILABLE);
             savedTickets[i] = ticketRepository.save(ticket);
         }
@@ -148,7 +149,7 @@ class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
     void shouldOnlyOneUserReserveTicketWhenMultipleUsersTryAtOnce() throws InterruptedException {
         Ticket ticket = new Ticket();
         ticket.setSeatNumber("TEST-101");
-        ticket.setPrice(100.0);
+        ticket.setPrice(BigDecimal.valueOf(100.0));
         ticket.setStatus(TicketStatus.AVAILABLE);
         Ticket savedTicket = ticketRepository.save(ticket);
 

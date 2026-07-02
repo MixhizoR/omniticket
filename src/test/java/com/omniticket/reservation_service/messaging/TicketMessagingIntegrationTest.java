@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -31,7 +32,7 @@ class TicketMessagingIntegrationTest extends AbstractBaseIntegrationTest {
         // Send 2 messages to ensure at least one reaches TestMessagesHolder
         // (RabbitMQ round-robins between TicketNotificationConsumer and
         // TestMessagesHolder)
-        TicketPurchaseMessage msg = new TicketPurchaseMessage(1L, "A1", "test@example.com", 100.0);
+        TicketPurchaseMessage msg = new TicketPurchaseMessage(1L, "A1", "test@example.com", BigDecimal.valueOf(100.0));
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
 
@@ -42,7 +43,7 @@ class TicketMessagingIntegrationTest extends AbstractBaseIntegrationTest {
     @Test
     void givenTicketPurchaseMessage_whenConsumed_thenMessageReceived() {
         // Send 2 messages to ensure at least one reaches TestMessagesHolder
-        TicketPurchaseMessage msg = new TicketPurchaseMessage(2L, "B2", "user@example.com", 200.0);
+        TicketPurchaseMessage msg = new TicketPurchaseMessage(2L, "B2", "user@example.com", BigDecimal.valueOf(200.0));
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
 
@@ -57,6 +58,6 @@ class TicketMessagingIntegrationTest extends AbstractBaseIntegrationTest {
         assertNotNull(received);
         assertEquals("B2", received.getSeatNumber());
         assertEquals("user@example.com", received.getUserEmail());
-        assertEquals(200.0, received.getPrice(), 0.001);
+        assertEquals(BigDecimal.valueOf(200.0), received.getPrice());
     }
 }
