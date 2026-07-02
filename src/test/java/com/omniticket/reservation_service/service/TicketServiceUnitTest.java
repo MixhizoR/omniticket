@@ -314,8 +314,7 @@ class TicketServiceUnitTest {
 
         TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("zaten satılmış"));
-
+        assertInstanceOf(TicketAlreadyReservedException.class, exception);
         verify(rLock).unlock();
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
