@@ -25,6 +25,7 @@ import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
+import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
 import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
@@ -35,10 +36,9 @@ import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 public class TicketService {
 
     private final TicketRepository ticketRepository;
-    private final RedissonClient redissonClient;
-    private final TransactionTemplate transactionTemplate;
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
+    private final DistributedLockTemplate distributedLockTemplate;
 
     @Transactional
     public TicketResponseDTO createTicket(TicketCreateRequestDTO ticketCreateRequestDTO) {
@@ -89,92 +89,51 @@ public class TicketService {
     }
 
     public TicketResponseDTO reserveTicket(Long id) {
-        RLock lock = redissonClient.getLock("ticket-lock:" + id);
-        boolean locked = false;
-
-        try {
-            if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
+        return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
+            Ticket ticket = findTicketById(id);
+            if (ticket.getStatus() != TicketStatus.AVAILABLE) {
+                throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
             }
-            locked = true;
-            log.info("Kilit alındı, işlem başlıyor... \uD83D\uDD10");
-
-            return transactionTemplate.execute(status -> {
-                Ticket ticket = findTicketById(id);
-
-                if (ticket.getStatus() != TicketStatus.AVAILABLE) {
-                    throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
-                }
-
-                ticket.setStatus(TicketStatus.RESERVED);
-                ticket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
-
-                Ticket savedTicket = ticketRepository.save(ticket);
-                return mapToResponseDTO(savedTicket);
-            });
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
-                log.info("İşlem bitti, kilit açıldı.");
-            }
-        }
+            ticket.setStatus(TicketStatus.RESERVED);
+            ticket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+            Ticket savedTicket = ticketRepository.save(ticket);
+            return mapToResponseDTO(savedTicket);
+        });
     }
 
     public TicketResponseDTO purchaseTicket(Long id) {
-        RLock lock = redissonClient.getLock("ticket-lock:" + id);
-        boolean locked = false;
+        return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
 
-        try {
-            if (!lock.tryLock(5, -1, TimeUnit.SECONDS)) {
-                throw new TicketLockAcquisitionException("Ticket is currently being processed, please try again.");
+            Ticket ticket = findTicketById(id);
+
+            if (ticket.getStatus() != TicketStatus.RESERVED) {
+                throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmemiş!");
             }
-            locked = true;
 
-            return transactionTemplate.execute(status -> {
-                try {
-                    Ticket ticket = findTicketById(id);
+            ticket.setStatus(TicketStatus.SOLD);
+            ticket.setReservedAt(null);
+            Ticket soldTicket = ticketRepository.save(ticket);
 
-                    if (ticket.getStatus() != TicketStatus.RESERVED) {
-                        throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmemiş!");
-                    }
+            try {
+                String payloadJson = objectMapper.writeValueAsString(
+                        new TicketPurchaseMessage(
+                                soldTicket.getId(),
+                                soldTicket.getSeatNumber(),
+                                "no-reply@omniticket.com",
+                                soldTicket.getPrice()));
 
-                    ticket.setStatus(TicketStatus.SOLD);
-                    ticket.setReservedAt(null);
-                    Ticket soldTicket = ticketRepository.save(ticket);
+                OutboxEvent event = new OutboxEvent();
+                event.setAggregateId(String.valueOf(soldTicket.getId()));
+                event.setEventType("TICKET_SOLD");
+                event.setPayload(payloadJson);
+                outboxRepository.save(event);
 
-                    String payloadJson = objectMapper.writeValueAsString(
-                            new TicketPurchaseMessage(
-                                    soldTicket.getId(),
-                                    soldTicket.getSeatNumber(),
-                                    "no-reply@omniticket.com",
-                                    soldTicket.getPrice()));
+                return mapToResponseDTO(soldTicket);
 
-                    OutboxEvent event = new OutboxEvent();
-                    event.setAggregateId(String.valueOf(soldTicket.getId()));
-                    event.setEventType("TICKET_SOLD");
-                    event.setPayload(payloadJson);
-                    outboxRepository.save(event);
-
-                    return mapToResponseDTO(soldTicket);
-
-                } catch (JsonProcessingException e) {
-                    status.setRollbackOnly(); // Serileştirme hatasında rollback tetikle
-                    throw new RuntimeException("Mesaj formatı hatası", e);
-                }
-            });
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
+            } catch (JsonProcessingException e) {
+                throw new TicketSystemException("JSON serileştirme hatası nedeniyle satın alma iptal edildi.", e);
             }
-        }
+        });
     }
 
     private Ticket findTicketById(Long id) {
