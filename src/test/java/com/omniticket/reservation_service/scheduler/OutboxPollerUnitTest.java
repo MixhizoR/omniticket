@@ -1,6 +1,7 @@
 package com.omniticket.reservation_service.scheduler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
 import com.omniticket.reservation_service.config.RabbitMQConfig;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
@@ -17,6 +18,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -30,6 +32,9 @@ class OutboxPollerUnitTest {
 
     @Mock
     private RabbitTemplate rabbitTemplate;
+
+    @Mock
+    private DistributedLockTemplate lockTemplate;
 
     @Captor
     private ArgumentCaptor<OutboxEvent> outboxEventCaptor;
@@ -51,11 +56,15 @@ class OutboxPollerUnitTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        outboxPoller = new OutboxPoller(outboxRepository, rabbitTemplate, objectMapper);
+        outboxPoller = new OutboxPoller(outboxRepository, rabbitTemplate, objectMapper, lockTemplate);
     }
 
     @Test
     void givenNoPendingEvents_whenProcessOutboxEvents_thenDoesNothing() {
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of());
 
         outboxPoller.processOutboxEvents();
@@ -71,6 +80,10 @@ class OutboxPollerUnitTest {
                 new TicketPurchaseMessage(1L, "A1", "test@test.com", BigDecimal.valueOf(100.0)));
         OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", payload);
 
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -99,6 +112,10 @@ class OutboxPollerUnitTest {
         OutboxEvent event1 = createPendingEvent("event-1", "1", "TICKET_SOLD", payload1);
         OutboxEvent event2 = createPendingEvent("event-2", "2", "TICKET_SOLD", payload2);
 
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event1, event2));
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -115,6 +132,10 @@ class OutboxPollerUnitTest {
     void givenInvalidPayload_whenProcessOutboxEvents_thenSkipsEventAndLogsError() {
         OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", "invalid-json-not-parseable");
 
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
 
         outboxPoller.processOutboxEvents();
@@ -130,6 +151,10 @@ class OutboxPollerUnitTest {
                 new TicketPurchaseMessage(1L, "A1", "test@test.com", BigDecimal.valueOf(100.0)));
         OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", payload);
 
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
         doThrow(new RuntimeException("RabbitMQ connection refused"))
                 .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
@@ -149,6 +174,10 @@ class OutboxPollerUnitTest {
         OutboxEvent invalidEvent = createPendingEvent("event-1", "1", "TICKET_SOLD", "invalid-json");
         OutboxEvent validEvent = createPendingEvent("event-2", "2", "TICKET_SOLD", validPayload);
 
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(invalidEvent, validEvent));
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
