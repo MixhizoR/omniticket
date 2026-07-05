@@ -5,6 +5,7 @@ import com.omniticket.reservation_service.config.RabbitMQConfig;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.model.TicketPurchaseMessage;
 import com.omniticket.reservation_service.repository.OutboxRepository;
+import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -22,42 +23,42 @@ public class OutboxPoller {
     private final OutboxRepository outboxRepository;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
+    private final DistributedLockTemplate lockTemplate;
 
-    // Her 5 saniyede bir çalışacak
     @Scheduled(fixedDelay = 5000)
     public void processOutboxEvents() {
-        // 1. PENDING olan son 50 mesajı çek
-        List<OutboxEvent> pendingEvents = outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING");
+        lockTemplate.executeWithLock("outbox-poller-lock", () -> {
 
-        if (pendingEvents.isEmpty()) {
-            log.info("There is nothing to process in outbox table");
-            return;
-        }
+            List<OutboxEvent> pendingEvents = outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING");
 
-        log.info("Number of outbox messages to process: {}", pendingEvents.size());
-
-        for (OutboxEvent event : pendingEvents) {
-            try {
-                // 2. DB'de tuttuğumuz JSON'ı tekrar Objeye çevir
-                TicketPurchaseMessage message = objectMapper.readValue(event.getPayload(), TicketPurchaseMessage.class);
-
-                // 3. RabbitMQ'ya gönder
-                rabbitTemplate.convertAndSend(
-                        RabbitMQConfig.EXCHANGE_NAME,
-                        RabbitMQConfig.ROUTING_KEY,
-                        message);
-
-                // 4. Başarıyla gittiyse statüyü SENT yap
-                event.setStatus("SENT");
-                event.setProcessedAt(LocalDateTime.now(java.time.ZoneId.of("UTC+3")));
-                outboxRepository.save(event);
-
-            } catch (Exception e) {
-                // 5. Hata olursa statüyü değiştirme! Bir sonraki 5 saniyede tekrar dene.
-                log.error("Outbox message could not be sent to RabbitMQ! Event ID: {} - Error: {}", event.getId(),
-                        e.getMessage());
-                // Döngüde bir sonraki kayda geç, bu kaydı atla.
+            if (pendingEvents.isEmpty()) {
+                log.info("There is nothing to process in outbox table");
+                return null;
             }
-        }
+
+            log.info("Number of outbox messages to process: {}", pendingEvents.size());
+
+            for (OutboxEvent event : pendingEvents) {
+                try {
+                    TicketPurchaseMessage message = objectMapper.readValue(event.getPayload(),
+                            TicketPurchaseMessage.class);
+
+                    rabbitTemplate.convertAndSend(
+                            RabbitMQConfig.EXCHANGE_NAME,
+                            RabbitMQConfig.ROUTING_KEY,
+                            message);
+
+                    event.setStatus("SENT");
+                    event.setProcessedAt(LocalDateTime.now(java.time.ZoneId.of("UTC+3")));
+                    outboxRepository.save(event);
+
+                } catch (Exception e) {
+                    log.error("Outbox message could not be sent to RabbitMQ! Event ID: {} - Error: {}", event.getId(),
+                            e.getMessage());
+                }
+            }
+
+            return null;
+        });
     }
 }
