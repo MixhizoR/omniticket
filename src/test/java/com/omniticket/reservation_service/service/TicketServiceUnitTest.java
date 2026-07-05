@@ -2,6 +2,7 @@ package com.omniticket.reservation_service.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
 import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
@@ -22,22 +23,19 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-import org.springframework.transaction.support.TransactionCallback;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.Month;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,16 +45,10 @@ class TicketServiceUnitTest {
     private TicketRepository ticketRepository;
 
     @Mock
-    private RedissonClient redissonClient;
-
-    @Mock
-    private TransactionTemplate transactionTemplate;
-
-    @Mock
     private OutboxRepository outboxRepository;
 
     @Mock
-    private RLock rLock;
+    private DistributedLockTemplate distributedLockTemplate;
 
     @Captor
     private ArgumentCaptor<Ticket> ticketCaptor;
@@ -82,8 +74,7 @@ class TicketServiceUnitTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        ticketService = new TicketService(ticketRepository, redissonClient, transactionTemplate, outboxRepository,
-                objectMapper);
+        ticketService = new TicketService(ticketRepository, outboxRepository, objectMapper, distributedLockTemplate);
     }
 
     @Test
@@ -188,14 +179,12 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenRedisConnection_whenGetLock_thenReturnsRLock() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-
+    void givenAvailableTicket_whenReserve_thenReturnsReservedTicket() {
         Ticket ticket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(ticket));
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> {
@@ -203,59 +192,50 @@ class TicketServiceUnitTest {
             saved.setId(1L);
             return saved;
         });
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
 
         TicketResponseDTO result = ticketService.reserveTicket(1L);
 
         assertNotNull(result);
         assertEquals(TicketStatus.RESERVED, result.getStatus());
         assertNotNull(result.getReservedAt());
-        verify(redissonClient).getLock("ticket-lock:" + 1L);
-        verify(rLock).tryLock(5, 10, TimeUnit.SECONDS);
-        verify(rLock).unlock();
+        verify(distributedLockTemplate).executeWithLock(eq("ticket-lock:" + 1L), any());
     }
 
     @Test
-    void givenTicketAlreadyReserved_whenReserve_thenThrowsTicketAlreadyReservedException() throws InterruptedException {
+    void givenTicketAlreadyReserved_whenReserve_thenThrowsTicketAlreadyReservedException() {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
 
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
 
         assertThrows(TicketAlreadyReservedException.class, () -> ticketService.reserveTicket(1L));
 
-        verify(rLock).unlock();
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
 
     @Test
-    void givenRedisConnection_whenLockFails_thenThrowsTicketLockAcquisitionException() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+    void givenRedisConnection_whenLockFails_thenThrowsTicketLockAcquisitionException() {
+        when(distributedLockTemplate.executeWithLock(anyString(), any()))
+                .thenThrow(new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!"));
 
         TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.reserveTicket(1L));
         assertTrue(exception.getMessage().contains("çok yoğun"));
 
-        verify(rLock, never()).unlock();
         verify(ticketRepository, never()).findById(anyLong());
     }
 
     @Test
-    void givenInterruptedLock_whenReserve_thenThrowsTicketSystemException() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class)))
-                .thenThrow(new InterruptedException("interrupted"));
+    void givenInterruptedLock_whenReserve_thenThrowsTicketSystemException() {
+        when(distributedLockTemplate.executeWithLock(anyString(), any()))
+                .thenThrow(new TicketSystemException("Sistemsel bir hata oluştu.", new InterruptedException("interrupted")));
 
         TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.reserveTicket(1L));
         assertTrue(exception.getMessage().contains("Sistemsel bir hata"));
 
-        verify(rLock, never()).unlock();
+        verify(ticketRepository, never()).findById(anyLong());
     }
 
     @Test
@@ -264,17 +244,13 @@ class TicketServiceUnitTest {
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
         soldTicket.setReservedAt(null);
 
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenReturn(soldTicket);
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
-        doNothing().when(rLock).unlock();
 
         TicketResponseDTO result = ticketService.purchaseTicket(1L);
 
@@ -282,9 +258,7 @@ class TicketServiceUnitTest {
         assertEquals(TicketStatus.SOLD, result.getStatus());
         assertNull(result.getReservedAt());
 
-        verify(redissonClient).getLock("ticket-lock:" + 1L);
-        verify(rLock).tryLock(5, -1, TimeUnit.SECONDS);
-        verify(rLock).unlock();
+        verify(distributedLockTemplate).executeWithLock(eq("ticket-lock:" + 1L), any());
         verify(ticketRepository).findById(1L);
         verify(ticketRepository).save(any(Ticket.class));
 
@@ -305,73 +279,60 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenNonReservedTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() throws InterruptedException {
+    void givenNonReservedTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() {
         Ticket availableTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
 
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(availableTicket));
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
-        doNothing().when(rLock).unlock();
 
         TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
                 () -> ticketService.purchaseTicket(1L));
         assertInstanceOf(TicketAlreadyReservedException.class, exception);
-        verify(rLock).unlock();
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
     @Test
-    void givenSoldTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() throws InterruptedException {
+    void givenSoldTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() {
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
 
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(soldTicket));
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
-        doNothing().when(rLock).unlock();
 
         TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
                 () -> ticketService.purchaseTicket(1L));
         assertTrue(exception.getMessage().contains("zaten satılmış"));
 
-        verify(rLock).unlock();
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
     @Test
-    void givenLockNotAcquired_whenPurchase_thenThrowsTicketLockAcquisitionException() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+    void givenLockNotAcquired_whenPurchase_thenThrowsTicketLockAcquisitionException() {
+        when(distributedLockTemplate.executeWithLock(anyString(), any()))
+                .thenThrow(new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!"));
 
         TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("being processed"));
+        assertTrue(exception.getMessage().contains("çok yoğun"));
 
-        verify(rLock, never()).unlock();
         verify(ticketRepository, never()).findById(anyLong());
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
     @Test
-    void givenInterruptedLock_whenPurchase_thenThrowsTicketSystemException() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class)))
-                .thenThrow(new InterruptedException("interrupted"));
+    void givenInterruptedLock_whenPurchase_thenThrowsTicketSystemException() {
+        when(distributedLockTemplate.executeWithLock(anyString(), any()))
+                .thenThrow(new TicketSystemException("Sistemsel bir hata oluştu.", new InterruptedException("interrupted")));
 
         TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.purchaseTicket(1L));
         assertTrue(exception.getMessage().contains("Sistemsel bir hata oluştu"));
 
-        verify(rLock, never()).unlock();
         verify(ticketRepository, never()).findById(anyLong());
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
@@ -386,24 +347,18 @@ class TicketServiceUnitTest {
         }).when(spyMapper)
                 .writeValueAsString(any(TicketPurchaseMessage.class));
 
-        ticketService = new TicketService(ticketRepository, redissonClient, transactionTemplate, outboxRepository,
-                spyMapper);
+        ticketService = new TicketService(ticketRepository, outboxRepository, spyMapper, distributedLockTemplate);
 
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<TicketResponseDTO> callback = invocation.getArgument(0);
-            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
-        doNothing().when(rLock).unlock();
 
         RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("Mesaj formatı"));
+        assertTrue(exception.getMessage().contains("JSON serileştirme hatası"));
 
-        verify(rLock).unlock();
         verify(ticketRepository).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
