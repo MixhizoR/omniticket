@@ -31,25 +31,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TicketSystemException.class)
     public ResponseEntity<ErrorResponse> handleTicketSystemException(TicketSystemException ex) {
-        log.error("Sistem hatası: ", ex);
+        log.error("System error: ", ex);
         ErrorResponse errorResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "Bir sistem hatası oluştu: " + ex.getMessage());
+                "A system error occurred: " + ex.getMessage());
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResourceFoundException(NoResourceFoundException ex) {
-        // Log basmıyoruz veya sadece DEBUG seviyesinde basıyoruz ki konsol kirlenmesin
         ErrorResponse errorResponse = new ErrorResponse(HttpStatus.NOT_FOUND.value(),
-                "Kaynak bulunamadı: " + ex.getResourcePath());
+                "Resource not found: " + ex.getResourcePath());
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
-        log.error("Beklenmeyen bir hata oluştu: ", ex);
+        log.error("An unexpected error occurred: ", ex);
         ErrorResponse errorResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "Bir hata oluştu: " + ex.getMessage());
+                "An error occurred: " + ex.getMessage());
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

@@ -46,7 +46,7 @@ public class TicketService {
         ticket.setSeatNumber(ticketCreateRequestDTO.getSeatNumber());
         ticket.setPrice(ticketCreateRequestDTO.getPrice());
         ticket.setStatus(ticketCreateRequestDTO.getStatus());
-        log.info("Yeni bilet oluşturuluyor: {}", ticket.getSeatNumber());
+        log.info("Creating new ticket: {}", ticket.getSeatNumber());
         Ticket savedTicket = ticketRepository.save(ticket);
         return mapToResponseDTO(savedTicket);
     }
@@ -78,21 +78,21 @@ public class TicketService {
             existingTicket.setReservedAt(null);
         }
 
-        log.info("Bilet güncellendi: {}", id);
+        log.info("Ticket updated: {}", id);
         return mapToResponseDTO(existingTicket);
     }
 
     @Transactional
     public void deleteTicket(Long id) {
         ticketRepository.deleteById(id);
-        log.warn("Bilet silindi: {}", id);
+        log.warn("Ticket deleted: {}", id);
     }
 
     public TicketResponseDTO reserveTicket(Long id) {
         return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
             Ticket ticket = findTicketById(id);
             if (ticket.getStatus() != TicketStatus.AVAILABLE) {
-                throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmiş!");
+                throw new TicketAlreadyReservedException("This ticket is already sold or reserved!");
             }
             ticket.setStatus(TicketStatus.RESERVED);
             ticket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
@@ -107,7 +107,7 @@ public class TicketService {
             Ticket ticket = findTicketById(id);
 
             if (ticket.getStatus() != TicketStatus.RESERVED) {
-                throw new TicketAlreadyReservedException("Bu bilet zaten satılmış veya rezerve edilmemiş!");
+                throw new TicketAlreadyReservedException("This ticket is not reserved or already sold!");
             }
 
             ticket.setStatus(TicketStatus.SOLD);
@@ -131,7 +131,7 @@ public class TicketService {
                 return mapToResponseDTO(soldTicket);
 
             } catch (JsonProcessingException e) {
-                throw new TicketSystemException("JSON serileştirme hatası nedeniyle satın alma iptal edildi.", e);
+                throw new TicketSystemException("Purchase cancelled due to JSON serialization error.", e);
             }
         });
     }

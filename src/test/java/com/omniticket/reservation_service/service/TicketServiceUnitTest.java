@@ -219,10 +219,11 @@ class TicketServiceUnitTest {
     @Test
     void givenRedisConnection_whenLockFails_thenThrowsTicketLockAcquisitionException() {
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
-                .thenThrow(new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!"));
+                .thenThrow(new TicketLockAcquisitionException("System is busy, please try again!"));
 
-        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.reserveTicket(1L));
-        assertTrue(exception.getMessage().contains("çok yoğun"));
+        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class,
+                () -> ticketService.reserveTicket(1L));
+        assertTrue(exception.getMessage().contains("busy"));
 
         verify(ticketRepository, never()).findById(anyLong());
     }
@@ -230,10 +231,12 @@ class TicketServiceUnitTest {
     @Test
     void givenInterruptedLock_whenReserve_thenThrowsTicketSystemException() {
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
-                .thenThrow(new TicketSystemException("Sistemsel bir hata oluştu.", new InterruptedException("interrupted")));
+                .thenThrow(
+                        new TicketSystemException("A system error occurred.", new InterruptedException("interrupted")));
 
-        TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.reserveTicket(1L));
-        assertTrue(exception.getMessage().contains("Sistemsel bir hata"));
+        TicketSystemException exception = assertThrows(TicketSystemException.class,
+                () -> ticketService.reserveTicket(1L));
+        assertTrue(exception.getMessage().contains("system error"));
 
         verify(ticketRepository, never()).findById(anyLong());
     }
@@ -262,19 +265,16 @@ class TicketServiceUnitTest {
         verify(ticketRepository).findById(1L);
         verify(ticketRepository).save(any(Ticket.class));
 
-        // Verify outboxRepository.save was called with correct event
         verify(outboxRepository).save(outboxEventCaptor.capture());
         OutboxEvent capturedEvent = outboxEventCaptor.getValue();
         assertEquals("1", capturedEvent.getAggregateId());
         assertEquals("TICKET_SOLD", capturedEvent.getEventType());
         assertNotNull(capturedEvent.getPayload());
 
-        // Verify the payload is valid JSON and contains seat info
         String payload = capturedEvent.getPayload();
         assertTrue(payload.contains("A1"));
         assertTrue(payload.contains("100.0"));
 
-        // Ensure rabbitTemplate was NOT called directly
         verify(ticketRepository, never()).deleteById(anyLong());
     }
 
@@ -307,7 +307,7 @@ class TicketServiceUnitTest {
 
         TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("zaten satılmış"));
+        assertTrue(exception.getMessage().contains("already sold"));
 
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
@@ -316,10 +316,11 @@ class TicketServiceUnitTest {
     @Test
     void givenLockNotAcquired_whenPurchase_thenThrowsTicketLockAcquisitionException() {
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
-                .thenThrow(new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!"));
+                .thenThrow(new TicketLockAcquisitionException("System is busy, please try again!"));
 
-        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("çok yoğun"));
+        TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class,
+                () -> ticketService.purchaseTicket(1L));
+        assertTrue(exception.getMessage().contains("busy"));
 
         verify(ticketRepository, never()).findById(anyLong());
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
@@ -328,10 +329,12 @@ class TicketServiceUnitTest {
     @Test
     void givenInterruptedLock_whenPurchase_thenThrowsTicketSystemException() {
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
-                .thenThrow(new TicketSystemException("Sistemsel bir hata oluştu.", new InterruptedException("interrupted")));
+                .thenThrow(
+                        new TicketSystemException("A system error occurred.", new InterruptedException("interrupted")));
 
-        TicketSystemException exception = assertThrows(TicketSystemException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("Sistemsel bir hata oluştu"));
+        TicketSystemException exception = assertThrows(TicketSystemException.class,
+                () -> ticketService.purchaseTicket(1L));
+        assertTrue(exception.getMessage().contains("system error"));
 
         verify(ticketRepository, never()).findById(anyLong());
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
@@ -341,7 +344,6 @@ class TicketServiceUnitTest {
     void givenJsonProcessingError_whenPurchase_thenThrowsRuntimeException() throws Exception {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
 
-        // Use a spy to make writeValueAsString throw
         ObjectMapper spyMapper = spy(new ObjectMapper());
         doThrow(new JsonProcessingException("mock json error") {
         }).when(spyMapper)
@@ -357,7 +359,7 @@ class TicketServiceUnitTest {
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("JSON serileştirme hatası"));
+        assertTrue(exception.getMessage().contains("JSON serialization error"));
 
         verify(ticketRepository).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));

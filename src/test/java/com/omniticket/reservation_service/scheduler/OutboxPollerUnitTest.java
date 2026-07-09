@@ -141,7 +141,6 @@ class OutboxPollerUnitTest {
         outboxPoller.processOutboxEvents();
 
         verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
-        // Event should NOT be saved (status stays PENDING for retry)
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
@@ -162,7 +161,6 @@ class OutboxPollerUnitTest {
         outboxPoller.processOutboxEvents();
 
         verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
-        // Event should NOT be saved (status stays PENDING for retry)
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
@@ -178,12 +176,12 @@ class OutboxPollerUnitTest {
             Supplier<Void> supplier = invocation.getArgument(1);
             return supplier.get();
         });
-        when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(invalidEvent, validEvent));
+        when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING"))
+                .thenReturn(List.of(invalidEvent, validEvent));
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         outboxPoller.processOutboxEvents();
 
-        // Only the valid event should be sent and saved
         verify(rabbitTemplate, times(1)).convertAndSend(anyString(), anyString(), any(Object.class));
         verify(outboxRepository, times(1)).save(any(OutboxEvent.class));
     }

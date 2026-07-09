@@ -41,6 +41,5 @@ public final class TestContainerSingleton {
     }
 
     private TestContainerSingleton() {
-        // Utility class, prevent instantiation
     }
 }

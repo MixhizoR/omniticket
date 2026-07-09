@@ -25,21 +25,21 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
 
             String htmlMsg = String.format(
-                    "<h1>Biletiniz Hazır! 🎟️</h1>" +
-                            "<p>Koltuk Numaranız: <b>%s</b></p>" +
-                            "<p>Ödenen Tutar: <b>%.2f TL</b></p>" +
-                            "<br><p>OmniTicket'ı tercih ettiğiniz için teşekkürler!</p>",
+                    "<h1>Your Ticket is Ready! 🎟️</h1>" +
+                            "<p>Your Seat Number: <b>%s</b></p>" +
+                            "<p>Amount Paid: <b>%.2f TL</b></p>" +
+                            "<br><p>Thank you for choosing OmniTicket!</p>",
                     seat, price);
 
             helper.setText(htmlMsg, true);
             helper.setTo(to);
-            helper.setSubject("Bilet Onayı - OmniTicket");
+            helper.setSubject("Ticket Confirmation - OmniTicket");
             helper.setFrom("no-reply@omniticket.com");
 
             mailSender.send(mimeMessage);
         } catch (MessagingException e) {
-            log.error("E-posta gönderilirken hata oluştu: {}", e.getMessage());
-            throw new EmailSendingException("E-posta gönderilemedi: " + e.getMessage(), e);
+            log.error("Error sending email: {}", e.getMessage());
+            throw new EmailSendingException("Failed to send email: " + e.getMessage(), e);
         }
     }
 }

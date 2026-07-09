@@ -46,27 +46,25 @@ class RedissonLockIntegrationTest extends AbstractBaseIntegrationTest {
         for (int i = 0; i < numberOfThreads; i++) {
             executor.execute(() -> {
                 try {
-                    startLatch.await(); // Tüm threadler aynı anda başlasın diye bekle
+                    startLatch.await();
                     RLock threadLock = redissonClient.getLock("test-lock-2");
-                    // tryLock() bekleme süresi olmadan denenir. Kilidi alamazsa anında false döner!
                     if (threadLock.tryLock()) {
                         try {
                             successCount.incrementAndGet();
-                            TimeUnit.MILLISECONDS.sleep(500); // Kilidi tutan thread biraz beklesin
+                            TimeUnit.MILLISECONDS.sleep(500);
                         } finally {
                             threadLock.unlock();
                         }
                     }
                 } catch (Exception e) {
-                    // Beklenen istisna, bir şey yapma
                 } finally {
                     finishLatch.countDown();
                 }
             });
         }
 
-        startLatch.countDown(); // Threadleri serbest bırak
-        finishLatch.await(10, TimeUnit.SECONDS); // Tüm threadlerin bitmesini bekle
+        startLatch.countDown();
+        finishLatch.await(10, TimeUnit.SECONDS);
         executor.shutdown();
 
         assertEquals(1, successCount.get(),
