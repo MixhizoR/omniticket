@@ -49,7 +49,7 @@ public class OutboxPoller {
                             message);
 
                     event.setStatus("SENT");
-                    event.setProcessedAt(LocalDateTime.now(java.time.ZoneId.of("UTC+3")));
+                    event.setProcessedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
                     outboxRepository.save(event);
 
                 } catch (Exception e) {
