@@ -2,20 +2,14 @@ package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
-import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
 import com.omniticket.reservation_service.exception.TicketSystemException;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.repository.OutboxRepository;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,9 +20,8 @@ import com.omniticket.reservation_service.model.TicketStatus;
 import com.omniticket.reservation_service.repository.TicketRepository;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
 import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
-import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
+import com.omniticket.reservation_service.dto.TicketRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
-import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 
 @Service
 @RequiredArgsConstructor
@@ -41,11 +34,11 @@ public class TicketService {
     private final DistributedLockTemplate distributedLockTemplate;
 
     @Transactional
-    public TicketResponseDTO createTicket(TicketCreateRequestDTO ticketCreateRequestDTO) {
+    public TicketResponseDTO createTicket(TicketRequestDTO ticketCreateRequestDTO) {
         Ticket ticket = new Ticket();
-        ticket.setSeatNumber(ticketCreateRequestDTO.getSeatNumber());
-        ticket.setPrice(ticketCreateRequestDTO.getPrice());
-        ticket.setStatus(ticketCreateRequestDTO.getStatus());
+        ticket.setSeatNumber(ticketCreateRequestDTO.seatNumber());
+        ticket.setPrice(ticketCreateRequestDTO.price());
+        ticket.setStatus(ticketCreateRequestDTO.status());
         log.info("Creating new ticket: {}", ticket.getSeatNumber());
         Ticket savedTicket = ticketRepository.save(ticket);
         return mapToResponseDTO(savedTicket);
@@ -66,13 +59,13 @@ public class TicketService {
     }
 
     @Transactional
-    public TicketResponseDTO updateTicket(Long id, TicketUpdateRequestDTO ticketDetails) {
+    public TicketResponseDTO updateTicket(Long id, TicketRequestDTO ticketDetails) {
         Ticket existingTicket = findTicketById(id);
-        existingTicket.setSeatNumber(ticketDetails.getSeatNumber());
-        existingTicket.setPrice(ticketDetails.getPrice());
-        existingTicket.setStatus(ticketDetails.getStatus());
+        existingTicket.setSeatNumber(ticketDetails.seatNumber());
+        existingTicket.setPrice(ticketDetails.price());
+        existingTicket.setStatus(ticketDetails.status());
 
-        if (ticketDetails.getStatus() == TicketStatus.RESERVED) {
+        if (ticketDetails.status() == TicketStatus.RESERVED) {
             existingTicket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         } else {
             existingTicket.setReservedAt(null);
@@ -91,49 +84,38 @@ public class TicketService {
     public TicketResponseDTO reserveTicket(Long id) {
         return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
             Ticket ticket = findTicketById(id);
-            if (ticket.getStatus() != TicketStatus.AVAILABLE) {
-                throw new TicketAlreadyReservedException("This ticket is already sold or reserved!");
-            }
-            ticket.setStatus(TicketStatus.RESERVED);
-            ticket.setReservedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
-            Ticket savedTicket = ticketRepository.save(ticket);
-            return mapToResponseDTO(savedTicket);
+            ticket.reserve();
+            return mapToResponseDTO(ticket);
         });
     }
 
     public TicketResponseDTO purchaseTicket(Long id) {
         return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
-
             Ticket ticket = findTicketById(id);
-
-            if (ticket.getStatus() != TicketStatus.RESERVED) {
-                throw new TicketAlreadyReservedException("This ticket is not reserved or already sold!");
-            }
-
-            ticket.setStatus(TicketStatus.SOLD);
-            ticket.setReservedAt(null);
+            ticket.purchase();
             Ticket soldTicket = ticketRepository.save(ticket);
-
-            try {
-                String payloadJson = objectMapper.writeValueAsString(
-                        new TicketPurchaseMessage(
-                                soldTicket.getId(),
-                                soldTicket.getSeatNumber(),
-                                "no-reply@omniticket.com",
-                                soldTicket.getPrice()));
-
-                OutboxEvent event = new OutboxEvent();
-                event.setAggregateId(String.valueOf(soldTicket.getId()));
-                event.setEventType("TICKET_SOLD");
-                event.setPayload(payloadJson);
-                outboxRepository.save(event);
-
-                return mapToResponseDTO(soldTicket);
-
-            } catch (JsonProcessingException e) {
-                throw new TicketSystemException("Purchase cancelled due to JSON serialization error.", e);
-            }
+            saveOutboxEvent(soldTicket);
+            return mapToResponseDTO(soldTicket);
         });
+    }
+
+    private void saveOutboxEvent(Ticket ticket) {
+        try {
+            String payloadJson = objectMapper.writeValueAsString(
+                    new TicketPurchaseMessage(
+                            ticket.getId(),
+                            ticket.getSeatNumber(),
+                            "no-reply@omniticket.com",
+                            ticket.getPrice()));
+
+            OutboxEvent event = new OutboxEvent();
+            event.setAggregateId(String.valueOf(ticket.getId()));
+            event.setEventType("TICKET_SOLD");
+            event.setPayload(payloadJson);
+            outboxRepository.save(event);
+        } catch (JsonProcessingException e) {
+            throw new TicketSystemException("Purchase cancelled due to JSON serialization error.", e);
+        }
     }
 
     private Ticket findTicketById(Long id) {

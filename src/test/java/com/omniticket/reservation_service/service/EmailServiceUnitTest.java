@@ -1,9 +1,6 @@
 package com.omniticket.reservation_service.service;
 
 import java.math.BigDecimal;
-
-import com.omniticket.reservation_service.exception.EmailSendingException;
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

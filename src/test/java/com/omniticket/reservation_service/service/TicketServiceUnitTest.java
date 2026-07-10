@@ -3,11 +3,9 @@ package com.omniticket.reservation_service.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
-import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
+import com.omniticket.reservation_service.dto.TicketRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
-import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
-import com.omniticket.reservation_service.exception.TicketAlreadyReservedException;
 import com.omniticket.reservation_service.exception.TicketLockAcquisitionException;
 import com.omniticket.reservation_service.exception.TicketSystemException;
 import com.omniticket.reservation_service.model.OutboxEvent;
@@ -79,10 +77,7 @@ class TicketServiceUnitTest {
 
     @Test
     void givenValidTicket_whenCreateTicket_thenReturnsSavedTicket() {
-        TicketCreateRequestDTO requestDTO = new TicketCreateRequestDTO();
-        requestDTO.setSeatNumber("A1");
-        requestDTO.setPrice(BigDecimal.valueOf(100.0));
-        requestDTO.setStatus(TicketStatus.AVAILABLE);
+        TicketRequestDTO requestDTO = new TicketRequestDTO("A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
         Ticket savedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
 
         when(ticketRepository.save(any(Ticket.class))).thenReturn(savedTicket);
@@ -90,10 +85,10 @@ class TicketServiceUnitTest {
         TicketResponseDTO result = ticketService.createTicket(requestDTO);
 
         assertNotNull(result);
-        assertEquals(1L, result.getId());
-        assertEquals("A1", result.getSeatNumber());
-        assertEquals(BigDecimal.valueOf(100.0), result.getPrice());
-        assertEquals(TicketStatus.AVAILABLE, result.getStatus());
+        assertEquals(1L, result.id());
+        assertEquals("A1", result.seatNumber());
+        assertEquals(BigDecimal.valueOf(100.0), result.price());
+        assertEquals(TicketStatus.AVAILABLE, result.status());
         verify(ticketRepository).save(any(Ticket.class));
         verify(ticketRepository).save(ticketCaptor.capture());
         Ticket captured = ticketCaptor.getValue();
@@ -110,10 +105,10 @@ class TicketServiceUnitTest {
         TicketResponseDTO result = ticketService.getTicket(1L);
 
         assertNotNull(result);
-        assertEquals(1L, result.getId());
-        assertEquals("A1", result.getSeatNumber());
-        assertEquals(BigDecimal.valueOf(100.0), result.getPrice());
-        assertEquals(TicketStatus.AVAILABLE, result.getStatus());
+        assertEquals(1L, result.id());
+        assertEquals("A1", result.seatNumber());
+        assertEquals(BigDecimal.valueOf(100.0), result.price());
+        assertEquals(TicketStatus.AVAILABLE, result.status());
         verify(ticketRepository).findById(1L);
     }
 
@@ -135,30 +130,27 @@ class TicketServiceUnitTest {
         List<TicketResponseDTO> result = ticketService.getAllTickets();
 
         assertEquals(2, result.size());
-        assertEquals("A1", result.get(0).getSeatNumber());
-        assertEquals(BigDecimal.valueOf(100.0), result.get(0).getPrice());
-        assertEquals("A2", result.get(1).getSeatNumber());
-        assertEquals(BigDecimal.valueOf(150.0), result.get(1).getPrice());
+        assertEquals("A1", result.get(0).seatNumber());
+        assertEquals(BigDecimal.valueOf(100.0), result.get(0).price());
+        assertEquals("A2", result.get(1).seatNumber());
+        assertEquals(BigDecimal.valueOf(150.0), result.get(1).price());
         verify(ticketRepository).findAllByOrderByIdAsc();
     }
 
     @Test
     void givenExistingTicket_whenUpdateTicket_thenUpdatesAndReturnsTicket() {
         Ticket existingTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
-        TicketUpdateRequestDTO updateDTO = new TicketUpdateRequestDTO();
-        updateDTO.setSeatNumber("B1");
-        updateDTO.setPrice(BigDecimal.valueOf(200.0));
-        updateDTO.setStatus(TicketStatus.RESERVED);
+        TicketRequestDTO updateDTO = new TicketRequestDTO("B1", BigDecimal.valueOf(200.0), TicketStatus.RESERVED);
 
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(existingTicket));
 
         TicketResponseDTO result = ticketService.updateTicket(1L, updateDTO);
 
         assertNotNull(result);
-        assertEquals("B1", result.getSeatNumber());
-        assertEquals(BigDecimal.valueOf(200.0), result.getPrice());
-        assertEquals(TicketStatus.RESERVED, result.getStatus());
-        assertNotNull(result.getReservedAt());
+        assertEquals("B1", result.seatNumber());
+        assertEquals(BigDecimal.valueOf(200.0), result.price());
+        assertEquals(TicketStatus.RESERVED, result.status());
+        assertNotNull(result.reservedAt());
         verify(ticketRepository).findById(1L);
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
@@ -187,22 +179,17 @@ class TicketServiceUnitTest {
             return supplier.get();
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(ticket));
-        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> {
-            Ticket saved = invocation.getArgument(0);
-            saved.setId(1L);
-            return saved;
-        });
 
         TicketResponseDTO result = ticketService.reserveTicket(1L);
 
         assertNotNull(result);
-        assertEquals(TicketStatus.RESERVED, result.getStatus());
-        assertNotNull(result.getReservedAt());
+        assertEquals(TicketStatus.RESERVED, result.status());
+        assertNotNull(result.reservedAt());
         verify(distributedLockTemplate).executeWithLock(eq("ticket-lock:" + 1L), any());
     }
 
     @Test
-    void givenTicketAlreadyReserved_whenReserve_thenThrowsTicketAlreadyReservedException() {
+    void givenTicketAlreadyReserved_whenReserve_thenThrowsIllegalStateException() {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
 
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
@@ -211,7 +198,7 @@ class TicketServiceUnitTest {
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
 
-        assertThrows(TicketAlreadyReservedException.class, () -> ticketService.reserveTicket(1L));
+        assertThrows(IllegalStateException.class, () -> ticketService.reserveTicket(1L));
 
         verify(ticketRepository, never()).save(any(Ticket.class));
     }
@@ -258,8 +245,8 @@ class TicketServiceUnitTest {
         TicketResponseDTO result = ticketService.purchaseTicket(1L);
 
         assertNotNull(result);
-        assertEquals(TicketStatus.SOLD, result.getStatus());
-        assertNull(result.getReservedAt());
+        assertEquals(TicketStatus.SOLD, result.status());
+        assertNull(result.reservedAt());
 
         verify(distributedLockTemplate).executeWithLock(eq("ticket-lock:" + 1L), any());
         verify(ticketRepository).findById(1L);
@@ -279,7 +266,7 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenNonReservedTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() {
+    void givenNonReservedTicket_whenPurchase_thenThrowsIllegalStateException() {
         Ticket availableTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
 
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
@@ -288,15 +275,14 @@ class TicketServiceUnitTest {
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(availableTicket));
 
-        TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
+        assertThrows(IllegalStateException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertInstanceOf(TicketAlreadyReservedException.class, exception);
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
 
     @Test
-    void givenSoldTicket_whenPurchase_thenThrowsTicketAlreadyReservedException() {
+    void givenSoldTicket_whenPurchase_thenThrowsIllegalStateException() {
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
 
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
@@ -305,9 +291,9 @@ class TicketServiceUnitTest {
         });
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(soldTicket));
 
-        TicketAlreadyReservedException exception = assertThrows(TicketAlreadyReservedException.class,
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> ticketService.purchaseTicket(1L));
-        assertTrue(exception.getMessage().contains("already sold"));
+        assertTrue(exception.getMessage().contains("not reserved"));
 
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
@@ -375,7 +361,7 @@ class TicketServiceUnitTest {
         TicketResponseDTO result = ticketService.getTicket(1L);
 
         assertNotNull(result);
-        assertEquals(TicketStatus.RESERVED, result.getStatus());
-        assertEquals(reservedAt, result.getReservedAt());
+        assertEquals(TicketStatus.RESERVED, result.status());
+        assertEquals(reservedAt, result.reservedAt());
     }
 }

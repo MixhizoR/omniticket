@@ -5,9 +5,8 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.omniticket.reservation_service.dto.TicketCreateRequestDTO;
+import com.omniticket.reservation_service.dto.TicketRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
-import com.omniticket.reservation_service.dto.TicketUpdateRequestDTO;
 import com.omniticket.reservation_service.service.TicketService;
 
 import lombok.RequiredArgsConstructor;
@@ -30,13 +29,13 @@ public class TicketController {
     }
 
     @PostMapping
-    public ResponseEntity<TicketResponseDTO> createTicket(@RequestBody TicketCreateRequestDTO ticketCreateRequestDTO) {
-        return ResponseEntity.ok(ticketService.createTicket(ticketCreateRequestDTO));
+    public ResponseEntity<TicketResponseDTO> createTicket(@RequestBody TicketRequestDTO ticketRequestDTO) {
+        return ResponseEntity.ok(ticketService.createTicket(ticketRequestDTO));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<TicketResponseDTO> updateTicket(@PathVariable Long id,
-            @RequestBody TicketUpdateRequestDTO ticketDetails) {
+            @RequestBody TicketRequestDTO ticketDetails) {
         return ResponseEntity.ok(ticketService.updateTicket(id, ticketDetails));
     }
 
