@@ -21,20 +21,20 @@ public class DataInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         if (ticketRepository.count() == 0) {
-            log.info("Veritabanı boş, örnek biletler oluşturuluyor... 🎟️");
+            log.info("Database is empty, creating sample tickets... 🎟️");
 
             for (int i = 1; i <= 5; i++) {
                 Ticket ticket = new Ticket();
-                ticket.setSeatNumber("Sıra-A Koltuk-" + i);
+                ticket.setSeatNumber("Row-A Seat-" + i);
                 ticket.setPrice(BigDecimal.valueOf(150.0 * i));
                 ticket.setStatus(TicketStatus.AVAILABLE);
 
                 ticketRepository.save(ticket);
             }
 
-            log.info("Başarılı! 5 adet bilet sisteme yüklendi. ✅");
+            log.info("Success! 5 tickets loaded into the system. ✅");
         } else {
-            log.info("Veritabanında zaten biletler var, yeni veri eklenmedi. ✨");
+            log.info("Tickets already exist in the database, no new data added. ✨");
         }
     }
 }

@@ -27,20 +27,20 @@ public class DistributedLockTemplate {
 
         try {
             if (!lock.tryLock(5, -1, TimeUnit.SECONDS)) {
-                throw new TicketLockAcquisitionException("Şu an çok yoğun, lütfen tekrar deneyin!");
+                throw new TicketLockAcquisitionException("System is busy, please try again!");
             }
             locked = true;
-            log.info("Kilit alındı: {}", lockKey);
+            log.info("Lock acquired: {}", lockKey);
 
             return transactionTemplate.execute(status -> databaseAction.get());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new TicketSystemException("Sistemsel bir hata oluştu.", e);
+            throw new TicketSystemException("A system error occurred.", e);
         } finally {
             if (locked && lock.isHeldByCurrentThread()) {
                 lock.unlock();
-                log.info("İşlem bitti, kilit açıldı: {}", lockKey);
+                log.info("Operation completed, lock released: {}", lockKey);
             }
         }
     }

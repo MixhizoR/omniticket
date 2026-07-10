@@ -18,21 +18,21 @@ public class TicketNotificationConsumer {
 
     @RabbitListener(queues = RabbitMQConfig.QUEUE_NAME)
     public void handleTicketPurchaseMessage(TicketPurchaseMessage message) {
-        log.info("Mesaj alındı: {}", message);
+        log.info("Message received: {}", message);
         processNotification(message);
     }
 
     private void processNotification(TicketPurchaseMessage message) {
-        log.info("PDF Fatura simülasyonu başlatıldı...");
+        log.info("PDF invoice simulation started...");
 
         try {
             emailService.sendTicketEmail(
                     message.getUserEmail(),
                     message.getSeatNumber(),
                     message.getPrice());
-            log.info("✅ Mail başarıyla gönderildi: {}", message.getUserEmail());
+            log.info("✅ Email sent successfully: {}", message.getUserEmail());
         } catch (EmailSendingException e) {
-            log.error("❌ Mail gönderilemedi: {}", e.getMessage());
+            log.error("❌ Email could not be sent: {}", e.getMessage());
         }
     }
 }

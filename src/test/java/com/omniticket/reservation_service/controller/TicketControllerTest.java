@@ -150,7 +150,7 @@ class TicketControllerTest {
         @Test
         void givenSoldTicket_whenPurchase_thenThrowsException() throws Exception {
                 when(ticketService.purchaseTicket(1L))
-                                .thenThrow(new RuntimeException("Satın almak için önce rezervasyon yapmalısınız!"));
+                                .thenThrow(new RuntimeException("You must reserve the ticket before purchasing!"));
 
                 mockMvc.perform(post("/api/v1/tickets/{id}/purchase", 1L))
                                 .andExpect(status().isInternalServerError());

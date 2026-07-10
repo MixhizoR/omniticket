@@ -29,9 +29,6 @@ class TicketMessagingIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenTicketPurchase_whenPurchase_thenMessageSentToRabbitMQ() {
-        // Send 2 messages to ensure at least one reaches TestMessagesHolder
-        // (RabbitMQ round-robins between TicketNotificationConsumer and
-        // TestMessagesHolder)
         TicketPurchaseMessage msg = new TicketPurchaseMessage(1L, "A1", "test@example.com", BigDecimal.valueOf(100.0));
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
@@ -42,7 +39,6 @@ class TicketMessagingIntegrationTest extends AbstractBaseIntegrationTest {
 
     @Test
     void givenTicketPurchaseMessage_whenConsumed_thenMessageReceived() {
-        // Send 2 messages to ensure at least one reaches TestMessagesHolder
         TicketPurchaseMessage msg = new TicketPurchaseMessage(2L, "B2", "user@example.com", BigDecimal.valueOf(200.0));
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);
         rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.ROUTING_KEY, msg);

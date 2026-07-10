@@ -62,7 +62,6 @@ class OutboxRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
     void givenMultiplePendingEvents_whenFindTop50ByStatusOrderByCreatedAtAsc_thenReturnsOldestFirst() {
         OutboxEvent event1 = outboxRepository.save(createEvent("1", "TICKET_SOLD", "{}", "PENDING"));
         OutboxEvent event2 = outboxRepository.save(createEvent("2", "TICKET_SOLD", "{}", "PENDING"));
-        // This one gets status "PENDING" due to @PrePersist, so save then update to "SENT"
         OutboxEvent event3 = outboxRepository.save(createEvent("3", "TICKET_SOLD", "{}", "SENT"));
         event3.setStatus("SENT");
         outboxRepository.save(event3);

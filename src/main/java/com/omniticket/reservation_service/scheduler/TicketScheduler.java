@@ -32,10 +32,12 @@ public class TicketScheduler {
                 TicketStatus.RESERVED, oneMinuteAgo);
 
         for (Ticket ticket : reservedTickets) {
-            ticket.setStatus(TicketStatus.AVAILABLE);
-            ticket.setReservedAt(null);
-            ticketRepository.save(ticket);
-            log.info("Released reserved ticket: {}", ticket.getId());
+            try {
+                ticket.release();
+                log.info("Released reserved ticket: {}", ticket.getId());
+            } catch (Exception e) {
+                log.error("Failed to release ticket: {}", ticket.getId(), e);
+            }
         }
     }
 }
