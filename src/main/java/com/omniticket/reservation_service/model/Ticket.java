@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "tickets")
+@Table(name = "tickets", indexes = @Index(name = "idx_tickets_status_reserved_at", columnList = "status, reserved_at"))
 @Getter
 @Setter
 @NoArgsConstructor
