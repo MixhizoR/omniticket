@@ -1,139 +1,149 @@
-# 🎫 OmniTicket: High-Concurrency Ticket Reservation System
+# OmniTicket
 
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.x-brightgreen)
-![Java](https://img.shields.io/badge/Java-21-blue)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-darkblue)
-![Redis](https://img.shields.io/badge/Redis-7.4-red)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.1-orange)
-![License](https://img.shields.io/badge/license-MIT-blue)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.16-brightgreen)](https://spring.io/projects/spring-boot)
+[![Java](https://img.shields.io/badge/Java-21-blue)](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-darkblue)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7.4-red)](https://redis.io/)
+[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-4.1-orange)](https://www.rabbitmq.com/)
+[![Testcontainers](https://img.shields.io/badge/Testcontainers-1.21-blueviolet)](https://testcontainers.com/)
+[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-**OmniTicket** is a state-of-the-art, high-concurrency ticket reservation microservice built with **Spring Boot 3.5.x**. Designed for massive traffic events (like concerts or major sporting events), it leverages advanced locking mechanisms and messaging queues to ensure data integrity and system resilience under heavy Load.
+OmniTicket is a high-concurrency ticket reservation microservice built with Spring Boot 3.5.x and Java 21. It is designed for events with massive traffic spikes -- concerts, festivals, sporting events -- where thousands of users compete for limited tickets simultaneously.
 
----
-
-## 🔥 Key Features
-
--   **High Concurrency Support**: Utilizes **Redisson** for distributed locking to prevent overbooking and race conditions.
--   **Layered Architecture**: Clean separation of concerns following the **Controller-Service-Repository** pattern.
--   **Modern Java**: Built using **Java 21** with full support for **Records**, **Virtual Threads** (where applicable), and **Spring Boot 3.5.x** features.
--   **Real-time Notifications**: Integrated with **RabbitMQ** for asynchronous ticket issuance and status updates.
--   **Interactive API Documentation**: Full **Scalar** integration for a modern, high-performance API testing interface.
--   **Dockerized Deployment**: Includes a multi-stage Dockerfile and a robust `compose.yaml` for instant environment setup.
--   **Global Exception Handling**: Centralized error management for meaningful HTTP status codes and responses.
--   **Observability & Monitoring**: Fully integrated with **Spring Boot Actuator** and **Micrometer Prometheus** for real-time system health and performance tracking.
+The system uses Redisson distributed locks to prevent overselling, an outbox pattern with RabbitMQ for reliable asynchronous messaging, JPA optimistic locking for data integrity, and Testcontainers for fully isolated integration testing.
 
 ---
 
-## 🏗️ Architectural Decisions (The 'Why?')
+## Key Features
 
-As a Senior Architect, I've implemented several best practices into this project:
+- **Distributed Locking with Redisson.** Redis-backed locks prevent race conditions during concurrent reservation and purchase operations. Lock keys are scoped per ticket, so unrelated reservations never contend on the same lock.
 
-1.  **Distributed Locking (Redisson)**: To handle high-concurrency reservations, we use Redis-based locking rather than simple database locks. This prevents database bottlenecking and ensures that ticket counts are never inconsistent.
-2.  **Spring Boot 3.5.x & Java 21**: We utilize the latest stable features, focusing on performance optimizations and modern coding standards (Lombok, Jakarta EE).
-3.  **Asynchronous Messaging**: RabbitMQ decoupling ensures that the reservation experience remains fast for the user while slower processes (like sending confirmation emails) happen in the background.
-4.  **Database Strategy**: PostgreSQL 16 is used for ACID-compliant persistence, with optimized indexing for ticket availability checks.
-5.  **Observability (Actuator & Prometheus)**: Architecture includes built-in readiness/liveness probes and custom metrics to ensure the system is monitorable in production environments.
+- **Outbox Pattern for Reliable Messaging.** Domain events are persisted to an outbox table within the same database transaction that updates the ticket. A scheduled poller reads pending events and publishes them to RabbitMQ, guaranteeing at-least-once delivery without two-phase commits.
 
----
+- **Asynchronous Email Notifications.** After purchase, a confirmation email is sent via RabbitMQ asynchronously. The API returns immediately to the client while the email service processes the message in the background.
 
-## 🛠️ Technology Stack
+- **Three Layers of Concurrency Control.** Redisson locks at the application layer, JPA `@Version` optimistic locking at the ORM layer, and database constraints at the persistence layer. This defence-in-depth approach ensures overselling is impossible even under extreme load.
 
-| Component            | Technology                     |
-| :------------------- | :----------------------------- |
-| **Framework**        | Spring Boot 3.5.x              |
-| **Language**         | Java 21                        |
-| **Database**         | PostgreSQL 16                  |
-| **Caching/Locking**  | Redis & Redisson               |
-| **Messaging Queue**  | RabbitMQ                       |
-| **API Documentation**| Scalar & SpringDoc             |
-| **Containerization** | Docker & Docker Compose        |
-| **Monitoring**      | Actuator & Prometheus          |
-| **Build Tool**       | Maven                          |
+- **Fully Containerized Environment.** Docker Compose orchestrates PostgreSQL, Redis, RabbitMQ, and the application. A single command provisions the entire stack with health checks and network configuration.
+
+- **Isolated Integration Testing with Testcontainers.** Integration tests spin up disposable PostgreSQL and RabbitMQ containers, eliminating the need for pre-configured infrastructure. Tests are deterministic and self-contained.
+
+- **Interactive API Documentation via Scalar.** The API is documented with OpenAPI 3.0 and served through Scalar UI for exploring and testing endpoints.
+
+- **Observability with Actuator and Prometheus.** Spring Boot Actuator exposes health, metrics, and environment endpoints. Micrometer publishes custom metrics in Prometheus format for real-time monitoring.
 
 ---
 
-## 🚀 Getting Started
+## Technology Stack
+
+| Component              | Technology                                   |
+|------------------------|----------------------------------------------|
+| Framework              | Spring Boot 3.5.16                           |
+| Language               | Java 21                                      |
+| Database               | PostgreSQL 16                                |
+| Caching and Locking    | Redis 7.4 with Redisson 3.52.0               |
+| Message Broker         | RabbitMQ 4.1                                 |
+| API Documentation      | SpringDoc OpenAPI 2.8.15 + Scalar            |
+| Containerisation       | Docker and Docker Compose                    |
+| Monitoring             | Spring Boot Actuator + Micrometer Prometheus |
+| Build Tool             | Apache Maven (Maven Wrapper)                 |
+| Testing                | JUnit 5, Testcontainers 1.21, Awaitility     |
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
--   [Docker & Docker Compose](https://docs.docker.com/get-docker/)
--   [JDK 21+](https://adoptium.net/) (if running locally)
--   [Maven](https://maven.apache.org/download.cgi) (if running locally)
+- Docker and Docker Compose (V2 recommended)
+- JDK 21 and Maven 3.9+ (only for local development without Docker)
 
-### Quick Start with Docker
+### Quick Start with Docker Compose
 
-The easiest way to get OmniTicket up and running is using Docker:
+```bash
+git clone https://github.com/MixhizoR/omniticket.git
+cd omniticket
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/yourusername/omniticket.git
-    cd omniticket
-    ```
+cp .env.example .env
 
-2.  **Environment Setup**:
-    The service reads from a `.env` file. A default one is provided.
-    ```bash
-    cp .env.example .env
-    ```
-    *Note: The application is configured to automatically import `.env` as a property source even during local development.*
-
-3.  **Launch the stack**:
-    ```bash
-    docker compose up -d --build
-    ```
-
-The system will automatically initialize:
--   **PostgreSQL**: `localhost:5432`
--   **Redis**: `localhost:6379`
--   **RabbitMQ Management**: `localhost:15672` (User/Pass from `.env`)
--   **OmniTicket API**: `localhost:8080`
-
----
-
-## 📑 API Documentation (Scalar)
-
-Once the application is running, access the premium Scalar API documentation at:
-
-👉 [**http://localhost:8080/scalar/index.html**](http://localhost:8080/scalar/index.html)
-
-*Note: Ensure `scalar.enabled=true` is set in your `application.properties`.*
-
----
-
-## 🔧 Configuration
-
-All critical configurations are managed via environment variables in the `.env` file:
-
-```properties
-# Database host (postgres for Docker, localhost for local)
-DB_HOST=postgres
-POSTGRES_DB=omniticket
-POSTGRES_USER=myuser
-POSTGRES_PASSWORD=secret
-
-# RabbitMQ
-RABBITMQ_USER=admin
-RABBITMQ_PASSWORD=password
-
-# Mail (Mailtrap etc.)
-MAIL_USER=your_user
-MAIL_PASS=your_pass
+docker compose up -d --build
 ```
 
+This starts four services:
+
+| Service     | Port(s)             | Default Credentials                          |
+|-------------|---------------------|----------------------------------------------|
+| PostgreSQL  | 5432                | `omniticket` / `myuser` / `secret`           |
+| Redis       | 6379                | None                                         |
+| RabbitMQ    | 5672 (AMQP), 15672 (Management) | `admin` / `password`            |
+| OmniTicket  | 8080                | None                                         |
+
+### Local Development Without Docker
+
+Start PostgreSQL, Redis, and RabbitMQ separately (or via Docker), then update `.env` to point `DB_HOST`, `REDIS_HOST`, and `RABBITMQ_HOST` to `localhost`.
+
+```bash
+./mvnw spring-boot:run
+```
+
+The `.env` file is automatically loaded as a property source, so no manual property overrides are needed.
+
 ---
 
-## 🧪 Running Tests
+## API Documentation
+
+When the application is running, visit:
+
+```
+http://localhost:8080/scalar/index.html
+```
+
+### Available Endpoints
+
+| Method   | Path                          | Description                  |
+|----------|-------------------------------|------------------------------|
+| `GET`    | `/api/tickets`                | List all tickets             |
+| `GET`    | `/api/tickets/{id}`           | Get a ticket by ID           |
+| `POST`   | `/api/tickets`                | Create a new ticket          |
+| `PUT`    | `/api/tickets/{id}`           | Update a ticket              |
+| `DELETE` | `/api/tickets/{id}`           | Delete a ticket              |
+| `POST`   | `/api/tickets/{id}/reserve`   | Reserve an available ticket  |
+| `POST`   | `/api/tickets/{id}/purchase`  | Purchase a reserved ticket   |
+
+---
+
+## Configuration
+
+Environment-specific configuration is externalised through the `.env` file.
+
+| Variable           | Default     | Description                                          |
+|--------------------|-------------|------------------------------------------------------|
+| `DB_HOST`          | `postgres`  | PostgreSQL host                                      |
+| `POSTGRES_DB`      | `omniticket`| Database name                                        |
+| `POSTGRES_USER`    | `myuser`    | Database user                                        |
+| `POSTGRES_PASSWORD`| `secret`    | Database password                                    |
+| `RABBITMQ_USER`    | `admin`     | RabbitMQ management user                             |
+| `RABBITMQ_PASSWORD`| `password`  | RabbitMQ management password                         |
+| `MAIL_USER`        |             | SMTP username (Mailtrap or any SMTP provider)        |
+| `MAIL_PASS`        |             | SMTP password                                        |
+
+---
+
+## Testing
+
+Tests use Testcontainers to provision real PostgreSQL and RabbitMQ instances. Docker must be running.
 
 ```bash
 ./mvnw test
+
+# Run a specific test class
+./mvnw test -Dtest=TicketServiceConcurrencyTest
 ```
 
----
-
-## 📜 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
+The test suite covers unit tests with mocked dependencies, integration tests against real containers, and concurrency tests that simulate thousands of concurrent reservation attempts to validate distributed lock behaviour.
 
 ---
 
-**Developed with ❤️ by Oğuz Selman Çetin.**
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
