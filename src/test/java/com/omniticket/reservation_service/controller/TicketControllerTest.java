@@ -7,6 +7,9 @@ import com.omniticket.reservation_service.service.TicketService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -41,16 +44,17 @@ class TicketControllerTest {
                 List<TicketResponseDTO> tickets = List.of(
                                 createResponseDTO(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE, null),
                                 createResponseDTO(2L, "A2", BigDecimal.valueOf(150.0), TicketStatus.AVAILABLE, null));
+                Page<TicketResponseDTO> ticketPage = new PageImpl<>(tickets);
 
-                when(ticketService.getAllTickets()).thenReturn(tickets);
+                when(ticketService.getAllTickets(any(Pageable.class))).thenReturn(ticketPage);
 
                 mockMvc.perform(get("/api/v1/tickets"))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.size()").value(2))
-                                .andExpect(jsonPath("$[0].id").value(1))
-                                .andExpect(jsonPath("$[0].seatNumber").value("A1"))
-                                .andExpect(jsonPath("$[1].id").value(2))
-                                .andExpect(jsonPath("$[1].seatNumber").value("A2"));
+                                .andExpect(jsonPath("$.content.size()").value(2))
+                                .andExpect(jsonPath("$.content[0].id").value(1))
+                                .andExpect(jsonPath("$.content[0].seatNumber").value("A1"))
+                                .andExpect(jsonPath("$.content[1].id").value(2))
+                                .andExpect(jsonPath("$.content[1].seatNumber").value("A2"));
         }
 
         @Test

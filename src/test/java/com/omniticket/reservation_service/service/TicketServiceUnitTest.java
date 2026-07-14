@@ -29,6 +29,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -125,16 +130,17 @@ class TicketServiceUnitTest {
         List<Ticket> tickets = List.of(
                 createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE),
                 createTicket(2L, "A2", BigDecimal.valueOf(150.0), TicketStatus.AVAILABLE));
-        when(ticketRepository.findAllByOrderByIdAsc()).thenReturn(tickets);
+        Page<Ticket> ticketPage = new PageImpl<>(tickets);
+        when(ticketRepository.findAll(any(Pageable.class))).thenReturn(ticketPage);
 
-        List<TicketResponseDTO> result = ticketService.getAllTickets();
+        Page<TicketResponseDTO> result = ticketService.getAllTickets(PageRequest.of(0, 10));
 
-        assertEquals(2, result.size());
-        assertEquals("A1", result.get(0).seatNumber());
-        assertEquals(BigDecimal.valueOf(100.0), result.get(0).price());
-        assertEquals("A2", result.get(1).seatNumber());
-        assertEquals(BigDecimal.valueOf(150.0), result.get(1).price());
-        verify(ticketRepository).findAllByOrderByIdAsc();
+        assertEquals(2, result.getTotalElements());
+        assertEquals("A1", result.getContent().get(0).seatNumber());
+        assertEquals(BigDecimal.valueOf(100.0), result.getContent().get(0).price());
+        assertEquals("A2", result.getContent().get(1).seatNumber());
+        assertEquals(BigDecimal.valueOf(150.0), result.getContent().get(1).price());
+        verify(ticketRepository).findAll(any(Pageable.class));
     }
 
     @Test
@@ -229,7 +235,7 @@ class TicketServiceUnitTest {
     }
 
     @Test
-    void givenReservedTicket_whenPurchase_thenSavesOutboxAndReturnsSoldTicket() throws Exception {
+    void givenReservedTicket_whenPurchase_thenSavesOutboxAndReturnsSoldTicket() {
         Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
         soldTicket.setReservedAt(null);
