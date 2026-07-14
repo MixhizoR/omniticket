@@ -1,13 +1,15 @@
 package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omniticket.reservation_service.exception.TicketSystemException;
 import com.omniticket.reservation_service.model.OutboxEvent;
 import com.omniticket.reservation_service.repository.OutboxRepository;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,11 +53,10 @@ public class TicketService {
     }
 
     @Transactional(readOnly = true)
-    public List<TicketResponseDTO> getAllTickets() {
-        List<Ticket> tickets = ticketRepository.findAllByOrderByIdAsc();
-        return tickets.stream()
-                .map(this::mapToResponseDTO)
-                .toList();
+    public Page<TicketResponseDTO> getAllTickets(Pageable pageable) {
+        Page<Ticket> tickets = ticketRepository.findAll(pageable);
+        log.info("All tickets fetched.");
+        return tickets.map(this::mapToResponseDTO);
     }
 
     @Transactional

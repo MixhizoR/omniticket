@@ -6,6 +6,8 @@ import com.omniticket.reservation_service.model.TicketStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -65,7 +67,7 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
         Ticket ticket2 = ticketRepository.save(createTicket("A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE));
         Ticket ticket3 = ticketRepository.save(createTicket("C3", BigDecimal.valueOf(200.0), TicketStatus.AVAILABLE));
 
-        List<Ticket> tickets = ticketRepository.findAllByOrderByIdAsc();
+        List<Ticket> tickets = ticketRepository.findAll(Sort.by(Sort.Direction.ASC, "id"));
 
         assertEquals(3, tickets.size());
         assertEquals(ticket1.getId(), tickets.get(0).getId());
@@ -81,7 +83,7 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
         List<Ticket> expiredTickets = ticketRepository.findAllByStatusAndReservedAtBefore(
-                TicketStatus.RESERVED, oneMinuteAgo);
+                TicketStatus.RESERVED, oneMinuteAgo, PageRequest.of(0, 100));
 
         assertEquals(1, expiredTickets.size());
         assertEquals("A1", expiredTickets.get(0).getSeatNumber());
@@ -95,7 +97,7 @@ class TicketRepositoryIntegrationTest extends AbstractBaseIntegrationTest {
 
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
         List<Ticket> result = ticketRepository.findAllByStatusAndReservedAtBefore(
-                TicketStatus.RESERVED, oneMinuteAgo);
+                TicketStatus.RESERVED, oneMinuteAgo, PageRequest.of(0, 100));
 
         assertTrue(result.isEmpty());
     }

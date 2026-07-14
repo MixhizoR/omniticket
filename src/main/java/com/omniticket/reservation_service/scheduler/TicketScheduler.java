@@ -3,6 +3,7 @@ package com.omniticket.reservation_service.scheduler;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,15 +29,21 @@ public class TicketScheduler {
 
         LocalDateTime oneMinuteAgo = LocalDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(1);
 
-        List<Ticket> reservedTickets = ticketRepository.findAllByStatusAndReservedAtBefore(
-                TicketStatus.RESERVED, oneMinuteAgo);
+        while (true) {
+            List<Ticket> reservedTickets = ticketRepository.findAllByStatusAndReservedAtBefore(
+                    TicketStatus.RESERVED, oneMinuteAgo, PageRequest.of(0, 100));
 
-        for (Ticket ticket : reservedTickets) {
-            try {
-                ticket.release();
-                log.info("Released reserved ticket: {}", ticket.getId());
-            } catch (Exception e) {
-                log.error("Failed to release ticket: {}", ticket.getId(), e);
+            for (Ticket ticket : reservedTickets) {
+                try {
+                    ticket.release();
+                    log.info("Released expired ticket: {}", ticket.getId());
+                } catch (Exception e) {
+                    log.error("Failed to release ticket: {}", ticket.getId(), e);
+                }
+            }
+
+            if (reservedTickets.size() < 100) {
+                break;
             }
         }
     }
