@@ -8,7 +8,7 @@
 [![Testcontainers](https://img.shields.io/badge/Testcontainers-1.21-blueviolet)](https://testcontainers.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-OmniTicket is a high-concurrency ticket reservation microservice built with Spring Boot 3.5.x and Java 21. It is designed for events with massive traffic spikes -- concerts, festivals, sporting events -- where thousands of users compete for limited tickets simultaneously.
+OmniTicket is a high-concurrency monolithic backend application built with Spring Boot 3.5.x and Java 21. It is designed for events with massive traffic spikes -- concerts, festivals, sporting events -- where thousands of users compete for limited tickets simultaneously.
 
 The system uses Redisson distributed locks to prevent overselling, an outbox pattern with RabbitMQ for reliable asynchronous messaging, JPA optimistic locking for data integrity, and Testcontainers for fully isolated integration testing.
 
@@ -71,12 +71,12 @@ docker compose up -d --build
 
 This starts four services:
 
-| Service     | Port(s)             | Default Credentials                          |
-|-------------|---------------------|----------------------------------------------|
-| PostgreSQL  | 5432                | `omniticket` / `myuser` / `secret`           |
-| Redis       | 6379                | None                                         |
-| RabbitMQ    | 5672 (AMQP), 15672 (Management) | `admin` / `password`            |
-| OmniTicket  | 8080                | None                                         |
+| Service     | Port(s)                         | Default Credentials                         |
+|-------------|---------------------------------|---------------------------------------------|
+| PostgreSQL  | 5432                            | `omniticket` / `myuser` / `secret`          |
+| Redis       | 6379                            | None                                        |
+| RabbitMQ    | 5672 (AMQP), 15672 (Management) | `admin` / `password`                        |
+| OmniTicket  | 8080                            | None                                        |
 
 ### Local Development Without Docker
 
@@ -94,7 +94,7 @@ The `.env` file is automatically loaded as a property source, so no manual prope
 
 When the application is running, visit:
 
-```
+```website
 http://localhost:8080/scalar/index.html
 ```
 
