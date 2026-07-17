@@ -22,6 +22,8 @@ public class OutboxEvent {
     @Column(columnDefinition = "text")
     private String payload;
 
+    private int retryCount;
+
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime processedAt;

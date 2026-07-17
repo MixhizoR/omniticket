@@ -53,8 +53,15 @@ public class OutboxPoller {
                     outboxRepository.save(event);
 
                 } catch (Exception e) {
-                    log.error("Outbox message could not be sent to RabbitMQ! Event ID: {} - Error: {}", event.getId(),
-                            e.getMessage());
+                    event.setRetryCount(event.getRetryCount() + 1);
+                    if (event.getRetryCount() >= 3) {
+                        log.error("Outbox message could not be sent to RabbitMQ! Event ID: {} - Error: {}",
+                                event.getId(),
+                                e.getMessage());
+                        event.setStatus("FAILED");
+                    } else {
+                        outboxRepository.save(event);
+                    }
                 }
             }
 

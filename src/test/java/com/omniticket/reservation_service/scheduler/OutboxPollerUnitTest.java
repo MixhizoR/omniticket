@@ -129,7 +129,7 @@ class OutboxPollerUnitTest {
     }
 
     @Test
-    void givenInvalidPayload_whenProcessOutboxEvents_thenSkipsEventAndLogsError() {
+    void givenInvalidPayload_whenProcessOutboxEvents_thenIncrementsRetryCountAndSaves() {
         OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", "invalid-json-not-parseable");
 
         when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
@@ -137,15 +137,19 @@ class OutboxPollerUnitTest {
             return supplier.get();
         });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
+        when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         outboxPoller.processOutboxEvents();
 
         verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
-        verify(outboxRepository, never()).save(any(OutboxEvent.class));
+        verify(outboxRepository).save(outboxEventCaptor.capture());
+        OutboxEvent savedEvent = outboxEventCaptor.getValue();
+        assertEquals(1, savedEvent.getRetryCount());
+        assertEquals("PENDING", savedEvent.getStatus());
     }
 
     @Test
-    void givenRabbitMqFails_whenProcessOutboxEvents_thenDoesNotMarkAsSent() throws Exception {
+    void givenRabbitMqFails_whenProcessOutboxEvents_thenIncrementsRetryCountAndSaves() throws Exception {
         String payload = objectMapper.writeValueAsString(
                 new TicketPurchaseMessage(1L, "A1", "test@test.com", BigDecimal.valueOf(100.0)));
         OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", payload);
@@ -155,17 +159,21 @@ class OutboxPollerUnitTest {
             return supplier.get();
         });
         when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
+        when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
         doThrow(new RuntimeException("RabbitMQ connection refused"))
                 .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
 
         outboxPoller.processOutboxEvents();
 
         verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
-        verify(outboxRepository, never()).save(any(OutboxEvent.class));
+        verify(outboxRepository).save(outboxEventCaptor.capture());
+        OutboxEvent savedEvent = outboxEventCaptor.getValue();
+        assertEquals(1, savedEvent.getRetryCount());
+        assertEquals("PENDING", savedEvent.getStatus());
     }
 
     @Test
-    void givenOneFailingAndOneSucceedingEvent_whenProcessOutboxEvents_thenProcessesOnlySuccessful() throws Exception {
+    void givenOneFailingAndOneSucceedingEvent_whenProcessOutboxEvents_thenProcessesBoth() throws Exception {
         String validPayload = objectMapper.writeValueAsString(
                 new TicketPurchaseMessage(2L, "B1", "test2@test.com", BigDecimal.valueOf(200.0)));
 
@@ -183,6 +191,29 @@ class OutboxPollerUnitTest {
         outboxPoller.processOutboxEvents();
 
         verify(rabbitTemplate, times(1)).convertAndSend(anyString(), anyString(), any(Object.class));
-        verify(outboxRepository, times(1)).save(any(OutboxEvent.class));
+        verify(outboxRepository, times(2)).save(any(OutboxEvent.class));
+    }
+
+    @Test
+    void givenEventFailsThreeTimes_whenProcessOutboxEvents_thenSetsFailedStatusButDoesNotSave() throws Exception {
+        String payload = objectMapper.writeValueAsString(
+                new TicketPurchaseMessage(1L, "A1", "test@test.com", BigDecimal.valueOf(100.0)));
+        OutboxEvent event = createPendingEvent("event-1", "1", "TICKET_SOLD", payload);
+        event.setRetryCount(2);
+
+        when(lockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<Void> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
+        when(outboxRepository.findTop50ByStatusOrderByCreatedAtAsc("PENDING")).thenReturn(List.of(event));
+        doThrow(new RuntimeException("RabbitMQ connection refused"))
+                .when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+
+        outboxPoller.processOutboxEvents();
+
+        verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+        verify(outboxRepository, never()).save(any(OutboxEvent.class));
+        assertEquals(3, event.getRetryCount());
+        assertEquals("FAILED", event.getStatus());
     }
 }
