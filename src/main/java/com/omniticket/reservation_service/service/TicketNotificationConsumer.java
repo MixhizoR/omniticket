@@ -25,14 +25,10 @@ public class TicketNotificationConsumer {
     private void processNotification(TicketPurchaseMessage message) {
         log.info("PDF invoice simulation started...");
 
-        try {
-            emailService.sendTicketEmail(
-                    message.getUserEmail(),
-                    message.getSeatNumber(),
-                    message.getPrice());
-            log.info("✅ Email sent successfully: {}", message.getUserEmail());
-        } catch (EmailSendingException e) {
-            log.error("❌ Email could not be sent: {}", e.getMessage());
-        }
+        emailService.sendTicketEmail(
+                message.getUserEmail(),
+                message.getSeatNumber(),
+                message.getPrice());
+        log.info("✅ Email sent successfully: {}", message.getUserEmail());
     }
 }
