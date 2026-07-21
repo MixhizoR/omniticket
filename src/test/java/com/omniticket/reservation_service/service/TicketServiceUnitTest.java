@@ -3,6 +3,8 @@ package com.omniticket.reservation_service.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omniticket.reservation_service.common.lock.DistributedLockTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import com.omniticket.reservation_service.dto.TicketRequestDTO;
 import com.omniticket.reservation_service.dto.TicketResponseDTO;
 import com.omniticket.reservation_service.exception.ResourceNotFoundException;
@@ -25,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.Month;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -53,6 +56,9 @@ class TicketServiceUnitTest {
     @Mock
     private DistributedLockTemplate distributedLockTemplate;
 
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+
     @Captor
     private ArgumentCaptor<Ticket> ticketCaptor;
 
@@ -77,7 +83,8 @@ class TicketServiceUnitTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        ticketService = new TicketService(ticketRepository, outboxRepository, objectMapper, distributedLockTemplate);
+        ticketService = new TicketService(ticketRepository, outboxRepository, objectMapper, distributedLockTemplate,
+                stringRedisTemplate);
     }
 
     @Test
@@ -240,6 +247,10 @@ class TicketServiceUnitTest {
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
         soldTicket.setReservedAt(null);
 
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
+
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
             Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
             return supplier.get();
@@ -248,7 +259,7 @@ class TicketServiceUnitTest {
         when(ticketRepository.save(any(Ticket.class))).thenReturn(soldTicket);
         when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        TicketResponseDTO result = ticketService.purchaseTicket(1L);
+        TicketResponseDTO result = ticketService.purchaseTicket(1L, "test-key-123");
 
         assertNotNull(result);
         assertEquals(TicketStatus.SOLD, result.status());
@@ -269,11 +280,18 @@ class TicketServiceUnitTest {
         assertTrue(payload.contains("100.0"));
 
         verify(ticketRepository, never()).deleteById(anyLong());
+
+        verify(stringRedisTemplate.opsForValue()).set(eq("idempotency:purchase:test-key-123"), eq("1"), eq(24L),
+                eq(TimeUnit.HOURS));
     }
 
     @Test
     void givenNonReservedTicket_whenPurchase_thenThrowsIllegalStateException() {
         Ticket availableTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.AVAILABLE);
+
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
 
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
             Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
@@ -282,7 +300,7 @@ class TicketServiceUnitTest {
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(availableTicket));
 
         assertThrows(IllegalStateException.class,
-                () -> ticketService.purchaseTicket(1L));
+                () -> ticketService.purchaseTicket(1L, "test-key-123"));
         verify(ticketRepository, never()).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
     }
@@ -291,6 +309,10 @@ class TicketServiceUnitTest {
     void givenSoldTicket_whenPurchase_thenThrowsIllegalStateException() {
         Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
 
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
+
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
             Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
             return supplier.get();
@@ -298,7 +320,7 @@ class TicketServiceUnitTest {
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(soldTicket));
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> ticketService.purchaseTicket(1L));
+                () -> ticketService.purchaseTicket(1L, "test-key-123"));
         assertTrue(exception.getMessage().contains("not reserved"));
 
         verify(ticketRepository, never()).save(any(Ticket.class));
@@ -307,11 +329,15 @@ class TicketServiceUnitTest {
 
     @Test
     void givenLockNotAcquired_whenPurchase_thenThrowsTicketLockAcquisitionException() {
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
+
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
                 .thenThrow(new TicketLockAcquisitionException("System is busy, please try again!"));
 
         TicketLockAcquisitionException exception = assertThrows(TicketLockAcquisitionException.class,
-                () -> ticketService.purchaseTicket(1L));
+                () -> ticketService.purchaseTicket(1L, "test-key-123"));
         assertTrue(exception.getMessage().contains("busy"));
 
         verify(ticketRepository, never()).findById(anyLong());
@@ -320,12 +346,16 @@ class TicketServiceUnitTest {
 
     @Test
     void givenInterruptedLock_whenPurchase_thenThrowsTicketSystemException() {
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
+
         when(distributedLockTemplate.executeWithLock(anyString(), any()))
                 .thenThrow(
                         new TicketSystemException("A system error occurred.", new InterruptedException("interrupted")));
 
         TicketSystemException exception = assertThrows(TicketSystemException.class,
-                () -> ticketService.purchaseTicket(1L));
+                () -> ticketService.purchaseTicket(1L, "test-key-123"));
         assertTrue(exception.getMessage().contains("system error"));
 
         verify(ticketRepository, never()).findById(anyLong());
@@ -341,7 +371,12 @@ class TicketServiceUnitTest {
         }).when(spyMapper)
                 .writeValueAsString(any(TicketPurchaseMessage.class));
 
-        ticketService = new TicketService(ticketRepository, outboxRepository, spyMapper, distributedLockTemplate);
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:test-key-123")).thenReturn(null);
+
+        ticketService = new TicketService(ticketRepository, outboxRepository, spyMapper, distributedLockTemplate,
+                stringRedisTemplate);
 
         when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
             Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
@@ -350,11 +385,78 @@ class TicketServiceUnitTest {
         when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> ticketService.purchaseTicket(1L));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> ticketService.purchaseTicket(1L, "test-key-123"));
         assertTrue(exception.getMessage().contains("JSON serialization error"));
 
         verify(ticketRepository).save(any(Ticket.class));
         verify(outboxRepository, never()).save(any(OutboxEvent.class));
+    }
+
+    @Test
+    void givenBlankIdempotencyKey_whenPurchase_thenThrowsTicketSystemException() {
+        TicketSystemException exception = assertThrows(TicketSystemException.class,
+                () -> ticketService.purchaseTicket(1L, "  "));
+        assertTrue(exception.getMessage().contains("Idempotency-Key is required"));
+        verify(stringRedisTemplate, never()).opsForValue();
+        verify(distributedLockTemplate, never()).executeWithLock(anyString(), any());
+    }
+
+    @Test
+    void givenNullIdempotencyKey_whenPurchase_thenThrowsTicketSystemException() {
+        TicketSystemException exception = assertThrows(TicketSystemException.class,
+                () -> ticketService.purchaseTicket(1L, null));
+        assertTrue(exception.getMessage().contains("Idempotency-Key is required"));
+        verify(stringRedisTemplate, never()).opsForValue();
+        verify(distributedLockTemplate, never()).executeWithLock(anyString(), any());
+    }
+
+    @Test
+    void givenDuplicateIdempotencyKey_whenPurchase_thenReturnsExistingTicket() {
+        Ticket alreadySoldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
+        alreadySoldTicket.setReservedAt(null);
+
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:existing-key-456")).thenReturn("1");
+
+        when(ticketRepository.findById(1L)).thenReturn(Optional.of(alreadySoldTicket));
+
+        TicketResponseDTO result = ticketService.purchaseTicket(1L, "existing-key-456");
+
+        assertNotNull(result);
+        assertEquals(TicketStatus.SOLD, result.status());
+
+        verify(stringRedisTemplate.opsForValue()).get("idempotency:purchase:existing-key-456");
+        verify(ticketRepository).findById(1L);
+        verify(stringRedisTemplate.opsForValue(), never()).set(anyString(), anyString(), anyLong(), any());
+        verify(ticketRepository, never()).save(any(Ticket.class));
+        verify(distributedLockTemplate, never()).executeWithLock(anyString(), any());
+        verify(outboxRepository, never()).save(any(OutboxEvent.class));
+    }
+
+    @Test
+    void givenValidIdempotencyKey_whenPurchase_thenKeyIsStoredInRedis() {
+        Ticket reservedTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.RESERVED);
+        Ticket soldTicket = createTicket(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD);
+        soldTicket.setReservedAt(null);
+
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("idempotency:purchase:new-key-789")).thenReturn(null);
+
+        when(distributedLockTemplate.executeWithLock(anyString(), any())).thenAnswer(invocation -> {
+            Supplier<TicketResponseDTO> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
+        when(ticketRepository.findById(1L)).thenReturn(Optional.of(reservedTicket));
+        when(ticketRepository.save(any(Ticket.class))).thenReturn(soldTicket);
+        when(outboxRepository.save(any(OutboxEvent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ticketService.purchaseTicket(1L, "new-key-789");
+
+        verify(stringRedisTemplate.opsForValue()).set(eq("idempotency:purchase:new-key-789"), eq("1"), eq(24L),
+                eq(TimeUnit.HOURS));
     }
 
     @Test

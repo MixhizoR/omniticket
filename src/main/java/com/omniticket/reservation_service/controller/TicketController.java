@@ -55,8 +55,9 @@ public class TicketController {
     }
 
     @PostMapping("/{id}/purchase")
-    public ResponseEntity<TicketResponseDTO> purchase(@PathVariable Long id) {
-        return ResponseEntity.ok(ticketService.purchaseTicket(id));
+    public ResponseEntity<TicketResponseDTO> purchase(@PathVariable Long id,
+            @RequestHeader(value = "Idempotency-Key") String idempotencyKey) {
+        return ResponseEntity.ok(ticketService.purchaseTicket(id, idempotencyKey));
     }
 
 }

@@ -1,6 +1,7 @@
 package com.omniticket.reservation_service.service;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,7 @@ import com.omniticket.reservation_service.repository.OutboxRepository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,7 @@ public class TicketService {
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
     private final DistributedLockTemplate distributedLockTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Transactional
     public TicketResponseDTO createTicket(TicketRequestDTO ticketCreateRequestDTO) {
@@ -90,14 +93,31 @@ public class TicketService {
         });
     }
 
-    public TicketResponseDTO purchaseTicket(Long id) {
-        return distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
+    public TicketResponseDTO purchaseTicket(Long id, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new TicketSystemException("Idempotency-Key is required.");
+        }
+
+        String redisKey = "idempotency:purchase:" + idempotencyKey;
+
+        String existingTicketId = stringRedisTemplate.opsForValue().get(redisKey);
+        if (existingTicketId != null) {
+            log.info("Idempotency key matched! Returning already purchased ticket.");
+            Ticket alreadySoldTicket = findTicketById(Long.valueOf(existingTicketId));
+            return mapToResponseDTO(alreadySoldTicket);
+        }
+
+        TicketResponseDTO response = distributedLockTemplate.executeWithLock("ticket-lock:" + id, () -> {
             Ticket ticket = findTicketById(id);
             ticket.purchase();
             Ticket soldTicket = ticketRepository.save(ticket);
             saveOutboxEvent(soldTicket);
             return mapToResponseDTO(soldTicket);
         });
+
+        stringRedisTemplate.opsForValue().set(redisKey, String.valueOf(id), 24, TimeUnit.HOURS);
+
+        return response;
     }
 
     private void saveOutboxEvent(Ticket ticket) {
@@ -106,7 +126,7 @@ public class TicketService {
                     new TicketPurchaseMessage(
                             ticket.getId(),
                             ticket.getSeatNumber(),
-                            "no-reply@omniticket.com",
+                            "no-reply@omniticket.com", // TODO change this email to JWT
                             ticket.getPrice()));
 
             OutboxEvent event = new OutboxEvent();
