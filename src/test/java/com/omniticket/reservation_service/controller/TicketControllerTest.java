@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -142,9 +143,10 @@ class TicketControllerTest {
                 TicketResponseDTO soldTicket = createResponseDTO(1L, "A1", BigDecimal.valueOf(100.0), TicketStatus.SOLD,
                                 null);
 
-                when(ticketService.purchaseTicket(1L)).thenReturn(soldTicket);
+                when(ticketService.purchaseTicket(eq(1L), anyString())).thenReturn(soldTicket);
 
-                mockMvc.perform(post("/api/v1/tickets/{id}/purchase", 1L))
+                mockMvc.perform(post("/api/v1/tickets/{id}/purchase", 1L)
+                                .header("Idempotency-Key", "test-idempotency-key-123"))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.id").value(1))
                                 .andExpect(jsonPath("$.status").value("SOLD"))
@@ -153,10 +155,11 @@ class TicketControllerTest {
 
         @Test
         void givenSoldTicket_whenPurchase_thenThrowsException() throws Exception {
-                when(ticketService.purchaseTicket(1L))
+                when(ticketService.purchaseTicket(eq(1L), anyString()))
                                 .thenThrow(new RuntimeException("You must reserve the ticket before purchasing!"));
 
-                mockMvc.perform(post("/api/v1/tickets/{id}/purchase", 1L))
+                mockMvc.perform(post("/api/v1/tickets/{id}/purchase", 1L)
+                                .header("Idempotency-Key", "test-idempotency-key-456"))
                                 .andExpect(status().isInternalServerError());
         }
 }
