@@ -80,10 +80,11 @@ class TicketServiceConcurrencyTest extends AbstractBaseIntegrationTest {
         AtomicInteger failCount = new AtomicInteger(0);
 
         for (int i = 0; i < numberOfThreads; i++) {
+            final String idempotencyKey = "purchase-concur-key-" + i;
             executorService.execute(() -> {
                 try {
                     latch.await();
-                    ticketService.purchaseTicket(savedTicket.getId());
+                    ticketService.purchaseTicket(savedTicket.getId(), idempotencyKey);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();
