@@ -47,7 +47,7 @@ The system uses Redisson distributed locks to prevent overselling, an outbox pat
 | Containerisation       | Docker and Docker Compose                    |
 | Monitoring             | Spring Boot Actuator + Micrometer Prometheus |
 | Build Tool             | Apache Maven (Maven Wrapper)                 |
-| Testing                | JUnit 5, Testcontainers 1.21, Awaitility     |
+| Testing                | JUnit 5, Testcontainers 1.21, Awaitility, k6 |
 
 ---
 
@@ -100,15 +100,15 @@ http://localhost:8080/scalar/index.html
 
 ### Available Endpoints
 
-| Method   | Path                          | Description                  |
-|----------|-------------------------------|------------------------------|
-| `GET`    | `/api/tickets`                | List all tickets             |
-| `GET`    | `/api/tickets/{id}`           | Get a ticket by ID           |
-| `POST`   | `/api/tickets`                | Create a new ticket          |
-| `PUT`    | `/api/tickets/{id}`           | Update a ticket              |
-| `DELETE` | `/api/tickets/{id}`           | Delete a ticket              |
-| `POST`   | `/api/tickets/{id}/reserve`   | Reserve an available ticket  |
-| `POST`   | `/api/tickets/{id}/purchase`  | Purchase a reserved ticket   |
+| Method   | Path                              | Description                  |
+|----------|-----------------------------------|------------------------------|
+| `GET`    | `/api/v1/tickets`                 | List all tickets             |
+| `GET`    | `/api/v1/tickets/{id}`            | Get a ticket by ID           |
+| `POST`   | `/api/v1/tickets`                 | Create a new ticket          |
+| `PUT`    | `/api/v1/tickets/{id}`            | Update a ticket              |
+| `DELETE` | `/api/v1/tickets/{id}`            | Delete a ticket              |
+| `POST`   | `/api/v1/tickets/{id}/reserve`    | Reserve an available ticket  |
+| `POST`   | `/api/v1/tickets/{id}/purchase`   | Purchase a reserved ticket   |
 
 ---
 
@@ -141,6 +141,40 @@ Tests use Testcontainers to provision real PostgreSQL and RabbitMQ instances. Do
 ```
 
 The test suite covers unit tests with mocked dependencies, integration tests against real containers, and concurrency tests that simulate thousands of concurrent reservation attempts to validate distributed lock behaviour.
+
+In addition to the JUnit-based tests, the project includes k6 load tests under `src/test/load/` that validate the system's behaviour and performance under sustained concurrent load. See the [Performance & Load Testing](#performance--load-testing) section below for results.
+
+---
+
+## Performance & Load Testing
+
+The project includes k6 load tests orchestrated by `run-load-tests.sh`. The script automatically builds the application, provisions the Docker Compose stack (PostgreSQL, Redis, RabbitMQ), and runs each scenario at 100, 500, and 1000 virtual users (VU). Each run consists of a 30s ramp-up, 1m sustained load, and 30s ramp-down.
+
+```bash
+./run-load-tests.sh
+```
+
+Results are written to `LOAD_TEST_RESULTS.md`. The summary below is from the test run on **1 Aug 2026**. All tests passed their thresholds with **0% failed requests**.
+
+### Results Summary
+
+| Test                                    | VU   | Req/s | p(95)  | p(99)  | Failures |
+|-----------------------------------------|------|-------|--------|--------|----------|
+| Baseline Read (GET /tickets)            | 100  | 75    | 3.00ms | 4.71ms | 0.00%    |
+| Baseline Read (GET /tickets)            | 500  | 375   | 2.07ms | 3.94ms | 0.00%    |
+| Baseline Read (GET /tickets)            | 1000 | 749   | 2.11ms | 3.67ms | 0.00%    |
+| Concurrency Reservation (POST /reserve) | 100  | 75    | 3.94ms | 5.87ms | 0.00%    |
+| Concurrency Reservation (POST /reserve) | 500  | 374   | 3.35ms | 5.18ms | 0.00%    |
+| Concurrency Reservation (POST /reserve) | 1000 | 749   | 3.76ms | 5.73ms | 0.00%    |
+| Idempotency Purchase (POST /purchase)   | 50   | 38    | 4.50ms | 6.49ms | 0.00%    |
+
+### Key Takeaways
+
+- **Sub-5ms p(95) at 1000 VU.** Both read and reservation endpoints maintain millisecond-level latency even at 749 req/s sustained throughput.
+- **Zero overselling under contention.** The reservation test hammers 5 tickets with up to 1000 concurrent users; the Redisson distributed lock and JPA optimistic locking prevent overselling with no unexpected 5xx errors.
+- **Idempotency verified.** Duplicate purchase requests with the same `Idempotency-Key` return the original ticket id with HTTP 200, confirming the idempotency guarantee holds under concurrent load.
+
+The full raw k6 output is available in [LOAD_TEST_RESULTS.md](LOAD_TEST_RESULTS.md).
 
 ---
 
