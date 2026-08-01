@@ -1,5 +1,6 @@
 package com.omniticket.reservation_service.exception;
 
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -50,5 +51,20 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "An error occurred: " + ex.getMessage());
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalStateException(IllegalStateException ex) {
+        log.warn("Business rule violation: {}", ex.getMessage());
+        ErrorResponse errorResponse = new ErrorResponse(HttpStatus.CONFLICT.value(), ex.getMessage());
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(OptimisticLockingFailureException ex) {
+        log.warn("Concurrent modification detected: {}", ex.getMessage());
+        ErrorResponse errorResponse = new ErrorResponse(HttpStatus.CONFLICT.value(),
+                "Ticket was modified by another request, please retry.");
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
     }
 }

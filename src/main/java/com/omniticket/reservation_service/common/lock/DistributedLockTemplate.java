@@ -26,7 +26,13 @@ public class DistributedLockTemplate {
         boolean locked = false;
 
         try {
-            if (!lock.tryLock(5, -1, TimeUnit.SECONDS)) {
+            // leaseTime is explicit (not -1) to disable the Redisson watchdog.
+            // A fixed lease guarantees the lock is released even if the holder dies,
+            // and avoids background renewal traffic (EVALSHA) overwhelming Redis under
+            // load.
+            // waitTime=2s is a deliberate fail-fast: under lock contention a losing
+            // request should return 503 quickly instead of hanging in a queue for 5s.
+            if (!lock.tryLock(2, 30, TimeUnit.SECONDS)) {
                 throw new TicketLockAcquisitionException("System is busy, please try again!");
             }
             locked = true;
